@@ -2,11 +2,11 @@
 #SingleInstance, Force
 
     global TargetFrameRate := 40
+    global TargetFrameMs := 1000 / TargetFrameRate
+    
     global Gravity := -981
     global Friction := 0.01
     global Restitution := .6
-    global LevelIndex := 1
-    global TargetFrameMs := 1000 / TargetFrameRate
 
     SetBatchLines, -1
     SetWinDelay, -1
@@ -42,6 +42,8 @@ return
 
 global GameGui
 
+global Level, LevelIndex := 1, Left, Right, Jump, Duck
+
 MakeGuis:
     ;create game window
     Gui, Color, Black
@@ -63,8 +65,6 @@ ExitApp
 
 Initialize()
 {
-    global Health, Level, LevelIndex
-    
     Health := 100
 
     LevelFile := A_ScriptDir . "\Levels\Level " . LevelIndex . ".txt"
@@ -96,8 +96,8 @@ Initialize()
 
 PutProgress(x, y, w, h, name, i, options) {
     global
-    pos := "x" x " y" y " w" w " h" h
     local hwnd
+    pos := "x" x " y" y " w" w " h" h
     if (i > GameGui.count[name] || GameGui.count[name] == 0)
     {
         GameGui.count[name]++
@@ -137,7 +137,6 @@ Step(Delta)
 
 Input()
 {
-    global Left, Right, Jump, Duck
     Left  := GetKeyState("Left","P")  || GetKeyState("A", "P")
     Duck  := GetKeyState("Down","P")  || GetKeyState("S", "P")
     Jump  := GetKeyState("Up","P")    || GetKeyState("W", "P")
@@ -147,7 +146,7 @@ Input()
 
 Logic(Delta)
 {
-    global LevelIndex, Left, Right, Jump, Duck, Level, Health, Gravity, EnemyX, EnemyY
+    global EnemyX, EnemyY
     MoveSpeed := 800
     JumpSpeed := 200
     JumpInterval := 250
@@ -199,7 +198,6 @@ Logic(Delta)
 
 EnemyLogic(Delta)
 {
-    global Gravity, Level
     MoveSpeed := 600, JumpSpeed := 150, JumpInterval := 200
     For Index, Rectangle In Level.Enemies
     {
@@ -223,7 +221,7 @@ EnemyLogic(Delta)
 
 Physics(Delta)
 {
-    global Gravity, Friction, Restitution, Level, EnemyX, EnemyY
+    global EnemyX, EnemyY
     ;process player
     Level.Player.SpeedY += Gravity * Delta ;process gravity
     Level.Player.X += Level.Player.SpeedX * Delta
@@ -272,7 +270,6 @@ Physics(Delta)
 
 EntityPhysics(Delta,Entity,Rectangles)
 {
-    global Gravity, Friction, Restitution
     CollisionX := 0, CollisionY := 0, TotalIntersectX := 0, TotalIntersectY := 0
     For Index, Rectangle In Rectangles
     {
@@ -308,7 +305,6 @@ EntityPhysics(Delta,Entity,Rectangles)
 
 Update()
 {
-    global Level, Health
     ;update level
     For Index, Rectangle In Level.Blocks
         GuiControl, Move, LevelRectangle%Index%, % "x" . Rectangle.X . " y" . Rectangle.Y . " w" . Rectangle.W . " h" . Rectangle.H
@@ -334,7 +330,7 @@ Update()
 
 ParseLevel(LevelDefinition)
 {
-    Level := Object()
+    local Level := Object()
 
     Level.Rectangles := []
     Level.Blocks := []
@@ -410,15 +406,15 @@ class _Rectangle {
         return { X: this.X + this.W / 2, Y: this.Y + this.H / 2 }
     }
     
-    ; Distance between the *centers* of two blocks
+    ; Distance between the *centers* of two rects
     CenterDistance( rect ) {
         a := this.Center()
         b := rect.Center()
         return Sqrt( Abs(a.X - b.X)**2 + Abs(a.Y - b.Y)**2 )
     }
     
-    ; calculates the closest distace between two blocks (*not* the centers)
-    Distance(rect) {
+    ; calculates the closest distace between two rects (*not* the centers)
+    Distance( rect ) {
         X := this.IntersectsX(rect) ? 0 : min(Abs(this.X - (rect.X+rect.W)), Abs(rect.X - (this.X+this.W)))
         Y := this.IntersectsY(rect) ? 0 : min(Abs(this.Y - (rect.Y+rect.H)), Abs(rect.Y - (this.Y+this.H)))
         return Sqrt(X**2 + Y**2)
@@ -429,18 +425,28 @@ class _Rectangle {
         return (this.X >= rect.X) && (this.Y >= rect.Y) && (this.X + this.W <= rect.X + rect.W) && (this.Y + this.H <= rect.Y + rect.H)
     }
     
-    ; returns true if this intersects rect at all
+    ; returns a value that can be treated as boolean true if `this` intersects `rect`
+    ; 1 if it intersects and the x-intersection is greater than the y-intersection.
+    ; -1 if it intersects and the y-intersection is greater than the x-intersection.
+    ; 1 if they intersect equally
+    ; 0 if they do not intersect at all.
     Intersects( rect ) {
-        return this.IntersectsX(rect) && this.IntersectsY(rect)
+        x := this.IntersectsX(rect) 
+        return this.IntersectsY(rect) > x ? -1 : !!x
     }
     
-    IntersectsX( rect ) {
-        ; this could be optimized
-        return Between(this.X, rect.X, rect.X+rect.W) || Between(rect.X, this.X, this.X+this.W)
+    ; returns the amount of intersection or 0
+    IntersectX( rect ) {
+        return IntersectN(this.X, this.W, rect.X, rect.W)
     }
     
-    IntersectsY( rect ) {
-        return Between(this.Y, rect.Y, rect.Y+rect.H) || Between(rect.Y, this.Y, this.Y+this.H)
+    IntersectY( rect ) {
+        return IntersectN(this.Y, this.H, rect.Y, rect.H)
+    }
+    
+    IntersectN( n1, d1, n2, d2 ) {
+        r := -Abs(n1-n2) + min(d1, d2)
+        return r > 0 ? r : 0
     }
 }
 
@@ -458,22 +464,17 @@ class _Entity extends _Rectangle {
         this.AccelY := 0
     }
     
-    Physics( rects ) {
+    Physics( delta ) {
         ; get a rough radius to check for collisions
-        dist := 2*Sqrt((this.SpeedX + this.AccelX/TargetFrameRate)**2 + (this.SpeedY + this.AccelY/TargetFrameRate))
+        ; dist := 2*Sqrt((this.SpeedX + this.AccelX/TargetFrameRate)**2 + (this.SpeedY + this.AccelY/TargetFrameRate))
         
-        ; weed out rects that are too far away
-        i := 1
-        while i <= rects.MaxIndex()
-            if this.Distance(rect) > dist
-                rects.remove(i)
-            else
-                i++
-        
-        for i, rect in rects
+        for i, rect in Level.Rectangles
         {
-            if !this.Intersects(rect)
+            x := this.IntersectX(rect)
+            y := this.IntersectY(rect)
+            if !(x && y)
                 continue
+            
             
         }
     }
