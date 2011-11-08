@@ -1,23 +1,21 @@
 #NoEnv
 #SingleInstance, Force
 
-    TargetFrameRate := 40
-
-    Gravity := -981
-    Friction := 0.01
-    Restitution := .6
-
-    LevelIndex := 1
+    global TargetFrameRate := 40
+    global Gravity := -981
+    global Friction := 0.01
+    global Restitution := .6
+    global LevelIndex := 1
+    global TargetFrameMs := 1000 / TargetFrameRate
 
     SetBatchLines, -1
     SetWinDelay, -1
-
-    TargetFrameMs := 1000 / TargetFrameRate
 
     GoSub MakeGuis
     GoSub GameInit
 return
 
+#IF WinActive("ahk_id" GameGui.hwnd)
 F5::
 GameInit:
     If Initialize()
@@ -140,10 +138,10 @@ Step(Delta)
 Input()
 {
     global Left, Right, Jump, Duck
-    Left := GetKeyState("Left","P")
-    Right := GetKeyState("Right","P")
-    Jump := GetKeyState("Up","P")
-    Duck := GetKeyState("Down","P")
+    Left  := GetKeyState("Left","P")  || GetKeyState("A", "P")
+    Duck  := GetKeyState("Down","P")  || GetKeyState("S", "P")
+    Jump  := GetKeyState("Up","P")    || GetKeyState("W", "P")
+    Right := GetKeyState("Right","P") || GetKeyState("D", "P")
     Return, 0
 }
 
@@ -325,11 +323,24 @@ Update()
     Return, 0
 }
 
+; Object/Level Heirarchy:
+; 
+; Rectangles: Everything collide-able
+;   Blocks: fixed rectangle
+;   Entities: movable rectangle
+;       Player: player-controlled entity
+;       Enemies: AI-controlled entity
+; 
+
 ParseLevel(LevelDefinition)
 {
     Level := Object()
 
+    Level.Rectangles := []
     Level.Blocks := []
+    Level.Entities := []
+    Level.Enemies := []
+    
     If RegExMatch(LevelDefinition,"iS)Blocks\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
     {
         StringReplace, Property, Property, `r,, All
@@ -341,24 +352,29 @@ ParseLevel(LevelDefinition)
         Loop, Parse, Property, `n
         {
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
-            Level.Blocks.Insert(new _Rectangle(Entry1,Entry2,Entry3,Entry4))
+            rect := new _Rectangle(Entry1,Entry2,Entry3,Entry4)
+            Level.Blocks.Insert(rect)
+            Level.Rectangles.Insert(rect)
         }
     }
-
     If RegExMatch(LevelDefinition,"iS)Player\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
     {
         Entry5 := 0, Entry6 := 0
         StringSplit, Entry, Property, `,, %A_Space%`t`r`n
-        Level.Player := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
+        
+        player := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
+        Level.Player := player
+        Level.Rectangles.insert(player)
+        Level.Entities.insert(player)
     }
 
     If RegExMatch(LevelDefinition,"iS)Goal\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
     {
         StringSplit, Entry, Property, `,, %A_Space%`t`r`n
         Level.Goal := new _Rectangle(Entry1,Entry2,Entry3,Entry4)
+        ; the goal is handled specially and not used for collisions, so omit from Level.Rectangles
     }
     
-    Level.Enemies := []
     If RegExMatch(LevelDefinition,"iS)Enemies\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
     {
         StringReplace, Property, Property, `r,, All
@@ -371,7 +387,11 @@ ParseLevel(LevelDefinition)
         {
             Entry5 := 0, Entry6 := 0
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
-            Level.Enemies.insert(new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6))
+            
+            enemy := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
+            Level.Enemies.insert(enemy)
+            Level.Rectangles.insert(enemy)
+            Level.Entities.insert(enemy)
         }
     }
     return, Level
@@ -434,6 +454,28 @@ class _Entity extends _Rectangle {
         this.fixed := false
         this.SpeedX := SpeedX
         this.SpeedY := SpeedY
+        this.AccelX := 0 ; arrow direction
+        this.AccelY := 0
+    }
+    
+    Physics( rects ) {
+        ; get a rough radius to check for collisions
+        dist := 2*Sqrt((this.SpeedX + this.AccelX/TargetFrameRate)**2 + (this.SpeedY + this.AccelY/TargetFrameRate))
+        
+        ; weed out rects that are too far away
+        i := 1
+        while i <= rects.MaxIndex()
+            if this.Distance(rect) > dist
+                rects.remove(i)
+            else
+                i++
+        
+        for i, rect in rects
+        {
+            if !this.Intersects(rect)
+                continue
+            
+        }
     }
 }
 
