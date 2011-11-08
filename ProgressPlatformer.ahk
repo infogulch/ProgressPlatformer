@@ -446,7 +446,7 @@ min( x* ) {
     if (ObjMaxIndex(x) == 1 && IsObject(x[1]))
         x := x[1]
     r := x[1]
-    loop % ObjMaxIndex(x)
+    loop % ObjMaxIndex(x)-1
         if (x[1] < r)
             r := x[1]
     return r
