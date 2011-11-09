@@ -12,6 +12,7 @@
     global Left, Right, Jump, Duck, Health
     
     global GameGui
+    DeltaLimit := 0.1
     
     SetBatchLines, -1
     SetWinDelay, -1
@@ -33,14 +34,11 @@ GameInit:
 return
 
 StepThrough:
-    Temp1 := (A_TickCount - PreviousTime) / 1000
+    Delta := (A_TickCount - PreviousTime) / 1000
+    If (Delta > DeltaLimit)
+        Delta := DeltaLimit
     PreviousTime := A_TickCount
-    stepret := Step(Temp1)
-    if stepret
-        msgbox % stepret
-    if (stepret == -1)
-        PreviousTime := A_TickCount
-    else if (stepret) 
+    if Step(Delta)
     {
         SetTimer, %A_ThisLabel%, Off
         SetTimer GameInit, -1
@@ -123,8 +121,6 @@ HideProgresses() {
 Step(Delta)
 {
     Gui, +LastFound
-    If !WinActive() || GetKeyState("LButton", "P") || GetKeyState("RButton", "P") ;pause game if window is not active or mouse is held down
-        Return, -1
     If GetKeyState("Tab","P") ;slow motion
         Delta /= 2
     If x := Input()
