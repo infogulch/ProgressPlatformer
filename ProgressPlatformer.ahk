@@ -6,11 +6,16 @@
     
     global Gravity := -981
     global Friction := 0.01
-    global Restitution := .6
-
+    global Restitution := 0.6
+    
+    global Level, LevelIndex := 1
+    global Left, Right, Jump, Duck, Health
+    
+    global GameGui
+    
     SetBatchLines, -1
     SetWinDelay, -1
-
+    
     GoSub MakeGuis
     GoSub GameInit
 return
@@ -31,18 +36,16 @@ StepThrough:
     Temp1 := (A_TickCount - PreviousTime) / 1000
     PreviousTime := A_TickCount
     stepret := Step(Temp1)
+    if stepret
+        msgbox % stepret
     if (stepret == -1)
         PreviousTime := A_TickCount
     else if (stepret) 
     {
         SetTimer, %A_ThisLabel%, Off
-        SetTimer GameInit, -0
+        SetTimer GameInit, -1
     }
 return
-
-global GameGui
-
-global Level, LevelIndex := 1, Left, Right, Jump, Duck
 
 MakeGuis:
     ;create game window
@@ -83,10 +86,10 @@ Initialize()
 
     ;create player
     PutProgress(Level.Player.X, Level.Player.Y, Level.Player.W, Level.Player.H, "PlayerRectangle", "", "-Smooth Vertical")
-
+    
     ;create goal
     PutProgress(Level.Goal.X, Level.Goal.Y, Level.Goal.W, Level.Goal.H, "GoalRectangle", "", "Disabled -VScroll")
-
+    
     ;create enemies
     For Index, rect In Level.Enemies
         PutProgress(rect.X, rect.Y, rect.W, rect.H, "EnemyRectangle", Index, "BackgroundBlue")
@@ -124,14 +127,14 @@ Step(Delta)
         Return, -1
     If GetKeyState("Tab","P") ;slow motion
         Delta /= 2
-    If Input()
-        Return, 1
-    If Physics(Delta)
-        Return, 2
-    If Logic(Delta)
-        Return, 3
-    If Update()
-        Return, 4
+    If x := Input()
+        Return, 1 ", " x
+    If x := Physics(Delta)
+        Return, 2 ", " x
+    If x := Logic(Delta)
+        Return, 3 ", " x
+    If x := Update()
+        Return, 4 ", " x
     Return, 0
 }
 
@@ -150,7 +153,7 @@ Logic(Delta)
     MoveSpeed := 800
     JumpSpeed := 200
     JumpInterval := 250
-
+    
     Padding := 100
     WinGetPos,,, Width, Height, % "ahk_id" GameGui.hwnd
     If (Level.Player.X < -Padding || Level.Player.X > (Width + Padding) || Level.Player.Y > (Height + Padding)) ;out of bounds
@@ -164,12 +167,12 @@ Logic(Delta)
         LevelIndex++ ;move to the next level
         Return, 3
     }
-
+    
     If Left
         Level.Player.SpeedX -= MoveSpeed * Delta
     If Right
         Level.Player.SpeedX += MoveSpeed * Delta
-
+    
     If (Level.Player.IntersectX && (Left || Right))
     {
         Level.Player.SpeedY -= Gravity * Delta
@@ -350,7 +353,7 @@ ParseLevel(LevelDefinition)
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
             rect := new _Rectangle(Entry1,Entry2,Entry3,Entry4)
             Level.Blocks.Insert(rect)
-            Level.Rectangles.Insert(rect)
+            ; Level.Rectangles.Insert(rect)
         }
     }
     If RegExMatch(LevelDefinition,"iS)Player\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
@@ -360,8 +363,8 @@ ParseLevel(LevelDefinition)
         
         player := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
         Level.Player := player
-        Level.Rectangles.insert(player)
-        Level.Entities.insert(player)
+        ; Level.Rectangles.insert(player)
+        ; Level.Entities.insert(player)
     }
 
     If RegExMatch(LevelDefinition,"iS)Goal\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
@@ -386,10 +389,11 @@ ParseLevel(LevelDefinition)
             
             enemy := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
             Level.Enemies.insert(enemy)
-            Level.Rectangles.insert(enemy)
-            Level.Entities.insert(enemy)
+            ; Level.Rectangles.insert(enemy)
+            ; Level.Entities.insert(enemy)
         }
     }
+    
     return, Level
 }
 
@@ -400,6 +404,7 @@ class _Rectangle {
         this.W := W
         this.H := H
         this.fixed := true
+        this.Speed := { X: 0, Y: 0 }
     }
     
     Center() {
@@ -425,28 +430,29 @@ class _Rectangle {
         return (this.X >= rect.X) && (this.Y >= rect.Y) && (this.X + this.W <= rect.X + rect.W) && (this.Y + this.H <= rect.Y + rect.H)
     }
     
-    ; returns a value that can be treated as boolean true if `this` intersects `rect`
-    ; 1 if it intersects and the x-intersection is greater than the y-intersection.
-    ; -1 if it intersects and the y-intersection is greater than the x-intersection.
-    ; 1 if they intersect equally
-    ; 0 if they do not intersect at all.
     Intersects( rect ) {
+        ; returns a value that can be treated as boolean true if `this` intersects `rect`
+        ; 1 if it intersects and the x-intersection is greater than the y-intersection.
+        ; -1 if it intersects and the y-intersection is greater than the x-intersection.
+        ; 1 if they intersect equally
+        ; 0 if they do not intersect at all.
         x := this.IntersectsX(rect) 
         return this.IntersectsY(rect) > x ? -1 : !!x
     }
     
     ; returns the amount of intersection or 0
     IntersectX( rect ) {
-        return IntersectN(this.X, this.W, rect.X, rect.W)
+        return this.IntersectN(this.X, this.W, rect.X, rect.W)
     }
     
     IntersectY( rect ) {
-        return IntersectN(this.Y, this.H, rect.Y, rect.H)
+        return this.IntersectN(this.Y, this.H, rect.Y, rect.H)
     }
     
     IntersectN( n1, d1, n2, d2 ) {
+        ; change: this returns 1 if it just touches
         r := -Abs(n1-n2) + min(d1, d2)
-        return r > 0 ? r : 0
+        return r > -1 ? r + 1 : 0
     }
 }
 
@@ -456,17 +462,23 @@ class _Entity extends _Rectangle {
         this.Y := Y
         this.W := W
         this.H := H
+        
         this.mass := W * H ; * density
         this.fixed := false
+        
         this.SpeedX := SpeedX
         this.SpeedY := SpeedY
-        this.AccelX := 0 ; arrow direction
-        this.AccelY := 0
+        
+        ; !!! All changes to speed are done on NewSpeed, and copied after all calculations are finished
+        this.NewSpeed := { X: SpeedX, Y: SpeedY }
+        this.Speed := this.NewSpeed.Clone()
     }
     
     Physics( delta ) {
         ; get a rough radius to check for collisions
         ; dist := 2*Sqrt((this.SpeedX + this.AccelX/TargetFrameRate)**2 + (this.SpeedY + this.AccelY/TargetFrameRate))
+
+        this.NewSpeed.Y += Gravity * delta
         
         for i, rect in Level.Rectangles
         {
@@ -474,14 +486,53 @@ class _Entity extends _Rectangle {
             y := this.IntersectY(rect)
             if !(x && y)
                 continue
-            
-            
+            if (x)
+            {
+                this.Friction(delta, rect, "Y")
+                this.Impact(rect, "X")
+            }
+            if (y)
+            {
+                this.Friction(delta, rect, "X")
+                this.Impact(rect, "Y")
+            }
         }
+    }
+    
+    Impact( rect, dir ) {
+        if rect.fixed
+            this.NewSpeed[dir] *= -Restitution ; / 2 if button is pressed in same direction of Speed[dir]
+        else
+            this.NewSpeed[dir] := (this.mass*this.Speed[dir] + rect.mass*(rect.Speed[dir] + Restitution*(rect.Speed[dir] - this.Speed[dir])))/(this.mass + rect.mass)
+            ; formula slightly modified from: http://en.wikipedia.org/wiki/Coefficient_of_restitution#Speeds_after_impact
+    }
+    
+    Friction( delta, rect, dir ) { ; not sure this is 100% right. 
+        ; dir: direction of motion
+        ; normal: direction normal to motion
+        normal := dir = "Y" ? "X" : "Y" 
+        this.NewSpeed[dir] += Sign(rect.Speed[dir] - this.Speed[dir]) * Friction * Abs(this.Speed[normal])
     }
 }
 
-Between( x, a, b ) {
-    return (a >= x && x >= b)
+_Physics( delta ) {
+    ents := Level.Entities
+    
+    ; apply physics, only changes NewSpeed
+    loop % ent.MaxIndex()
+        ents[A_Index].physics(delta)
+    
+    ; apply changes in speeds to position
+    for i, ent in ents
+    {
+        ent.Speed := ent.NewSpeed.Clone()
+        ent.X += ent.Speed.X * delta
+        ent.Y += ent.Speed.Y * delta
+    }
+}
+
+Sign( x ) {
+    return x == 0 ? 0 : x < 0 ? -1 : 1
 }
 
 ; min that accepts either an array or args
