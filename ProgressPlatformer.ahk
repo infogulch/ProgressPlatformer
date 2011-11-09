@@ -64,8 +64,7 @@ GuiEscape:
 GuiClose:
 ExitApp
 
-Initialize()
-{
+Initialize() {
     Health := 100
 
     LevelFile := A_ScriptDir . "\Levels\Level " . LevelIndex . ".txt"
@@ -93,6 +92,10 @@ Initialize()
         PutProgress(rect.X, rect.Y, rect.W, rect.H, "EnemyRectangle", Index, "BackgroundBlue")
 
     Gui, Show, AutoSize, ProgressPlatformer
+    
+    WinGetPos,,, Width, Height, % "ahk_id" GameGui.hwnd
+    GameGui.Width := Width
+    GameGui.Height := Height
 }
 
 PutProgress(x, y, w, h, name, i, options) {
@@ -118,24 +121,23 @@ HideProgresses() {
             GuiControl, Hide, %name%%A_Index%
 }
 
-Step(Delta)
-{
-    Gui, +LastFound
+Step(Delta) {
     If GetKeyState("Tab","P") ;slow motion
         Delta /= 2
     If x := Input()
         Return, 1 ", " x
-    If x := Physics(Delta)
-        Return, 2 ", " x
     If x := Logic(Delta)
         Return, 3 ", " x
-    If x := Update()
+    If x := EnemyLogic(Delta)
         Return, 4 ", " x
+    If x := Physics(Delta)
+        Return, 2 ", " x
+    If x := Update()
+        Return, 5 ", " x
     Return, 0
 }
 
-Input()
-{
+Input() {
     Left  := GetKeyState("Left","P")  || GetKeyState("A", "P")
     Duck  := GetKeyState("Down","P")  || GetKeyState("S", "P")
     Jump  := GetKeyState("Up","P")    || GetKeyState("W", "P")
@@ -143,20 +145,18 @@ Input()
     Return, 0
 }
 
-Logic(Delta)
-{
+Logic(Delta) {
     global EnemyX, EnemyY
     MoveSpeed := 800
     JumpSpeed := 200
     JumpInterval := 250
     
     Padding := 100
-    WinGetPos,,, Width, Height, % "ahk_id" GameGui.hwnd
-    If (Level.Player.X < -Padding || Level.Player.X > (Width + Padding) || Level.Player.Y > (Height + Padding)) ;out of bounds
+    If (Level.Player.X < -Padding || Level.Player.X > (GameGui.Width + Padding) || Level.Player.Y > (GameGui.Height + Padding)) ;out of bounds
         Return, 1
     If (Health <= 0) ;out of health
         Return, 2
-    If Inside(Level.Player,Level.Goal) ;reached goal
+    If Level.Player.Inside(Level.Goal) ;reached goal
     {
         Score := Round(Health)
         MsgBox, You win!`n`nYour score was %Score%.
@@ -164,146 +164,69 @@ Logic(Delta)
         Return, 3
     }
     
+    ; TODO: prioritize the most recently pressed key
     If Left
-        Level.Player.SpeedX -= MoveSpeed * Delta
+        Level.Player.NewSpeed.X -= MoveSpeed * Delta
     If Right
-        Level.Player.SpeedX += MoveSpeed * Delta
+        Level.Player.NewSpeed.X += MoveSpeed * Delta
     
+    ; wall climb
     If (Level.Player.IntersectX && (Left || Right))
     {
-        Level.Player.SpeedY -= Gravity * Delta
+        Level.Player.NewSpeed.Y -= Gravity * Delta
         If Jump
-                Level.Player.SpeedY += MoveSpeed * Delta
+            Level.Player.NewSpeed.Y += MoveSpeed * Delta
     }
-    Else If (Jump && Level.Player.LastContact < JumpInterval)
-        Level.Player.SpeedY += JumpSpeed - (Gravity * Delta), Level.Player.LastContact := JumpInterval
-    Level.Player.LastContact += Delta
-
+    
+    Level.Player.WantJump := Jump
+    
     Level.Player.H := Duck ? 30 : 40
-
+    
+    ; health/enemy killing
     If (EnemyX || EnemyY > 0)
         Health -= 200 * Delta
     Else If EnemyY
     {
         EnemyY := Abs(EnemyY)
-        ObjRemove(Level.Enemies,EnemyY,"")
+        Level.Enemies.Remove(EnemyY,"")
         GuiControl, Hide, EnemyRectangle%EnemyY%
         Health += 50
     }
-
-    EnemyLogic(Delta)
     Return, 0
 }
 
-EnemyLogic(Delta)
-{
-    MoveSpeed := 600, JumpSpeed := 150, JumpInterval := 200
-    For Index, Rectangle In Level.Enemies
-    {
-        If ((Level.Player.Y - Rectangle.Y) < JumpSpeed && Abs(Level.Player.X - Rectangle.X) < (MoveSpeed / 2))
+EnemyLogic(Delta) {
+    MoveSpeed := 600, JumpSpeed := 150, SeekDistance := 300
+    for i, rect In Level.Enemies
+        if Level.Player.Distance(rect) < SeekDistance
         {
-            If (Rectangle.Y >= Level.Player.Y)
-            {
-                If Rectangle.IntersectX
-                    Rectangle.SpeedY += (MoveSpeed - Gravity) * Delta
-                Else If (Rectangle.LastContact < JumpInterval)
-                    Rectangle.SpeedY += JumpSpeed - (Gravity * Delta), Rectangle.LastContact := JumpInterval
-            }
-            If (Rectangle.X > Level.Player.X)
-                Rectangle.SpeedX -= MoveSpeed * Delta
-            Else
-                Rectangle.SpeedX += MoveSpeed * Delta
+            rect.WantJump := rect.Y < Level.Player.Y
+            if rect.WantJump && rect.IntersectsX(Level.Player) ;directly underneath the player
+                rect.NewSpeed.X += MoveSped * Delta * -Sign(Level.Player.X - rect.X)
+            else
+                rect.NewSpeed.X += MoveSpeed * Delta * Sign(Level.Player.X - rect.X)
         }
-        Rectangle.LastContact += Delta
+}
+
+Physics( delta ) {
+    ; O(n + n*(n + b)) n: entities, b: blocks
+    ents := Level.Entities
+    
+    ; apply physics, only changes NewSpeed
+    loop % ents.MaxIndex()
+        ents[A_Index].physics(delta)
+    
+    ; apply changes in speeds to position
+    for i, ent in ents
+    {
+        ent.Speed.X := ent.NewSpeed.X
+        ent.Speed.Y := ent.NewSpeed.Y
+        ent.X += ent.Speed.X * delta
+        ent.Y += ent.Speed.Y * delta
     }
 }
 
-Physics(Delta)
-{
-    global EnemyX, EnemyY
-    ;process player
-    Level.Player.SpeedY += Gravity * Delta ;process gravity
-    Level.Player.X += Level.Player.SpeedX * Delta
-    Level.Player.Y -= Level.Player.SpeedY * Delta ;process momentum
-    EntityPhysics(Delta,Level.Player,Level.Blocks) ;process collision with level
-
-    EnemyX := 0, EnemyY := 0
-    For Index, Rectangle In Level.Enemies
-    {
-        ;process enemy
-        Rectangle.SpeedY += Gravity * Delta ;process gravity
-        Rectangle.X += Rectangle.SpeedX * Delta, Rectangle.Y -= Rectangle.SpeedY * Delta ;process momentum
-        EntityPhysics(Delta,Rectangle,Level.Blocks) ;process collision with level
-        Temp1 := ObjClone(Level.Enemies), ObjRemove(Temp1,Index,"") ;create an array of enemies excluding the current one
-        EntityPhysics(Delta,Rectangle,Temp1) ;process collision with other enemies
-
-        If !Collide(Rectangle,Level.Player,IntersectX,IntersectY) ;player did not collide with the rectangle
-            Continue
-        If (Abs(IntersectX) > Abs(IntersectY)) ;collision along top or bottom side
-        {
-            EnemyY := (IntersectY < 0) ? -Index : Index
-            Rectangle.Y -= IntersectY ;move the player out of the intersection area
-            Level.Player.Y += IntersectY ;move the player out of the intersection area
-
-            Temp1 := ((Rectangle.SpeedX + Level.Player.SpeedX) / 2) * Restitution
-            Rectangle.SpeedY := Temp1 ;reflect the speed and apply damping
-            Level.Player.SpeedY := -Temp1 ;reflect the speed and apply damping
-        }
-        Else ;collision along left or right side
-        {
-            EnemyX := Index
-            Rectangle.X -= IntersectX ;move the player out of the intersection area
-            Level.Player.X += IntersectX ;move the player out of the intersection area
-
-            Temp1 := ((Rectangle.SpeedX + Level.Player.SpeedX) / 2) * Restitution
-            Rectangle.SpeedX := Temp1 ;reflect the speed and apply damping
-            Level.Player.SpeedX := -Temp1 ;reflect the speed and apply damping
-        }
-        If EnemyY
-        Rectangle.SpeedX *= (Friction * Abs(IntersectX)) ** Delta ;apply friction
-        If EnemyX
-            Rectangle.SpeedY *= (Friction * Abs(IntersectY)) ** Delta ;apply friction
-    }
-    Return, 0
-}
-
-EntityPhysics(Delta,Entity,Rectangles)
-{
-    CollisionX := 0, CollisionY := 0, TotalIntersectX := 0, TotalIntersectY := 0
-    For Index, Rectangle In Rectangles
-    {
-        If !Collide(Entity,Rectangle,IntersectX,IntersectY) ;entity did not collide with the rectangle
-            Continue
-        If (Abs(IntersectX) >= Abs(IntersectY)) ;collision along top or bottom side
-        {
-            CollisionY := 1
-            Entity.Y -= IntersectY ;move the entity out of the intersection area
-            Entity.SpeedY *= -Restitution ;reflect the speed and apply damping
-            TotalIntersectY += Abs(IntersectY)
-        }
-        Else ;collision along left or right side
-        {
-            CollisionX := 1
-            Entity.X -= IntersectX ;move the entity out of the intersection area
-            Entity.SpeedX *= -Restitution ;reflect the speed and apply damping
-            TotalIntersectX += Abs(IntersectX)
-        }
-    }
-    Entity.IntersectX := TotalIntersectX, Entity.IntersectY := TotalIntersectY
-    If CollisionY
-    {
-        Entity.LastContact := 0
-        Entity.SpeedX *= (Friction * TotalIntersectY) ** Delta ;apply friction
-    }
-    If CollisionX
-    {
-        Entity.IntersectY := TotalIntersectY
-        Entity.SpeedY *= (Friction * TotalIntersectX) ** Delta ;apply friction
-    }
-}
-
-Update()
-{
+Update() {
     ;update level
     For Index, Rectangle In Level.Blocks
         GuiControl, Move, LevelRectangle%Index%, % "x" . Rectangle.X . " y" . Rectangle.Y . " w" . Rectangle.W . " h" . Rectangle.H
@@ -318,17 +241,15 @@ Update()
     Return, 0
 }
 
-; Object/Level Heirarchy:
-; 
-; Rectangles: Everything collide-able
-;   Blocks: fixed rectangle
-;   Entities: movable rectangle
-;       Player: player-controlled entity
-;       Enemies: AI-controlled entity
-; 
-
-ParseLevel(LevelDefinition)
-{
+ParseLevel(LevelDefinition) {
+    ; Object/Level Heirarchy:
+    ; 
+    ; Rectangles: Everything collide-able
+    ;   Blocks: fixed rectangle
+    ;   Entities: movable rectangle
+    ;       Player: player-controlled entity
+    ;       Enemies: AI-controlled entity
+    ; 
     local Level := Object()
 
     Level.Rectangles := []
@@ -349,7 +270,7 @@ ParseLevel(LevelDefinition)
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
             rect := new _Rectangle(Entry1,Entry2,Entry3,Entry4)
             Level.Blocks.Insert(rect)
-            ; Level.Rectangles.Insert(rect)
+            Level.Rectangles.Insert(rect)
         }
     }
     If RegExMatch(LevelDefinition,"iS)Player\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
@@ -359,8 +280,8 @@ ParseLevel(LevelDefinition)
         
         player := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
         Level.Player := player
-        ; Level.Rectangles.insert(player)
-        ; Level.Entities.insert(player)
+        Level.Rectangles.insert(player)
+        Level.Entities.insert(player)
     }
 
     If RegExMatch(LevelDefinition,"iS)Goal\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
@@ -385,8 +306,8 @@ ParseLevel(LevelDefinition)
             
             enemy := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
             Level.Enemies.insert(enemy)
-            ; Level.Rectangles.insert(enemy)
-            ; Level.Entities.insert(enemy)
+            Level.Rectangles.insert(enemy)
+            Level.Entities.insert(enemy)
         }
     }
     
@@ -438,17 +359,11 @@ class _Rectangle {
     
     ; returns the amount of intersection or 0
     IntersectX( rect ) {
-        return this.IntersectN(this.X, this.W, rect.X, rect.W)
+        return IntersectN(this.X, this.W, rect.X, rect.W)
     }
     
     IntersectY( rect ) {
-        return this.IntersectN(this.Y, this.H, rect.Y, rect.H)
-    }
-    
-    IntersectN( n1, d1, n2, d2 ) {
-        ; change: this returns 1 if it just touches
-        r := -Abs(n1-n2) + min(d1, d2)
-        return r > -1 ? r + 1 : 0
+        return IntersectN(this.Y, this.H, rect.Y, rect.H)
     }
 }
 
@@ -465,23 +380,24 @@ class _Entity extends _Rectangle {
         this.SpeedX := SpeedX
         this.SpeedY := SpeedY
         
+        this.JumpSpeed := 200
+        
         ; !!! All changes to speed are done on NewSpeed, and copied after all calculations are finished
         this.NewSpeed := { X: SpeedX, Y: SpeedY }
         this.Speed := this.NewSpeed.Clone()
     }
     
     Physics( delta ) {
-        ; get a rough radius to check for collisions
-        ; dist := 2*Sqrt((this.SpeedX + this.AccelX/TargetFrameRate)**2 + (this.SpeedY + this.AccelY/TargetFrameRate))
-
         this.NewSpeed.Y += Gravity * delta
         
         for i, rect in Level.Rectangles
         {
             x := this.IntersectX(rect)
             y := this.IntersectY(rect)
+            
             if !(x && y)
                 continue
+            
             if (x)
             {
                 this.Friction(delta, rect, "Y")
@@ -489,6 +405,8 @@ class _Entity extends _Rectangle {
             }
             if (y)
             {
+                if this.WantJump
+                    this.NewSpeed.Y += this.JumpSpeed * delta
                 this.Friction(delta, rect, "X")
                 this.Impact(rect, "Y")
             }
@@ -511,28 +429,12 @@ class _Entity extends _Rectangle {
     }
 }
 
-_Physics( delta ) {
-    ents := Level.Entities
-    
-    ; apply physics, only changes NewSpeed
-    loop % ent.MaxIndex()
-        ents[A_Index].physics(delta)
-    
-    ; apply changes in speeds to position
-    for i, ent in ents
-    {
-        ent.Speed := ent.NewSpeed.Clone()
-        ent.X += ent.Speed.X * delta
-        ent.Y += ent.Speed.Y * delta
-    }
-}
-
 Sign( x ) {
     return x == 0 ? 0 : x < 0 ? -1 : 1
 }
 
-; min that accepts either an array or args
 min( x* ) {
+    ; accepts either an array or args
     if (ObjMaxIndex(x) == 1 && IsObject(x[1]))
         x := x[1]
     r := x[1]
@@ -542,33 +444,7 @@ min( x* ) {
     return r
 }
 
-Collide(Rectangle1,Rectangle2,ByRef IntersectX = "",ByRef IntersectY = "")
-{
-    Left1 := Rectangle1.X, Left2 := Rectangle2.X, Right1 := Left1 + Rectangle1.W, Right2 := Left2 + Rectangle2.W
-    Top1 := Rectangle1.Y, Top2 := Rectangle2.Y, Bottom1 := Top1 + Rectangle1.H, Bottom2 := Top2 + Rectangle2.H
-
-    ;check for collision
-    If (Right1 < Left2 || Right2 < Left1 || Bottom1 < Top2 || Bottom2 < Top1)
-    {
-        IntersectX := 0, IntersectY := 0
-        Return, 0 ;no collision occurred
-    }
-
-    ;find width of intersection
-    If (Left1 < Left2)
-        IntersectX := ((Right1 < Right2) ? Right1 : Right2) - Left2
-    Else
-        IntersectX := Left1 - ((Right1 < Right2) ? Right1 : Right2)
-
-    ;find height of intersection
-    If (Top1 < Top2)
-        IntersectY := ((Bottom1 < Bottom2) ? Bottom1 : Bottom2) - Top2
-    Else
-        IntersectY := Top1 - ((Bottom1 < Bottom2) ? Bottom1 : Bottom2)
-    Return, 1 ;collision occurred
-}
-
-Inside(Rectangle1,Rectangle2)
-{
-    Return, Rectangle1.X >= Rectangle2.X && (Rectangle1.X + Rectangle1.W) <= (Rectangle2.X + Rectangle2.W) && Rectangle1.Y >= Rectangle2.Y && (Rectangle1.Y + Rectangle1.H) <= (Rectangle2.Y + Rectangle2.H)
+IntersectN( n1, d1, n2, d2 ) {
+    r := -Abs(n1-n2) + min(d1, d2)
+    return r > -1 ? r + 1 : 0
 }
