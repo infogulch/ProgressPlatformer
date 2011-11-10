@@ -4,7 +4,7 @@
     global TargetFrameRate := 40
     global TargetFrameMs := 1000 / TargetFrameRate
     
-    global Gravity := -981
+    global Gravity := 981
     global Friction := 0.01
     global Restitution := 0.6
     
@@ -12,7 +12,7 @@
     global Left, Right, Jump, Duck, Health
     
     global GameGui
-    DeltaLimit := 0.1
+    DeltaLimit := 0.05
     
     SetBatchLines, -1
     SetWinDelay, -1
@@ -171,36 +171,36 @@ Logic(Delta) {
         Level.Player.NewSpeed.X += MoveSpeed * Delta
     
     ; wall climb
-    If (Level.Player.IntersectX && (Left || Right))
-    {
-        Level.Player.NewSpeed.Y -= Gravity * Delta
-        If Jump
-            Level.Player.NewSpeed.Y += MoveSpeed * Delta
-    }
+    ; If (Level.Player.IntersectX && (Left || Right))
+    ; {
+        ; Level.Player.NewSpeed.Y -= Gravity * Delta
+        ; If Jump
+            ; Level.Player.NewSpeed.Y += MoveSpeed * Delta
+    ; }
     
     Level.Player.WantJump := Jump
     
     Level.Player.H := Duck ? 30 : 40
     
     ; health/enemy killing
-    If (EnemyX || EnemyY > 0)
-        Health -= 200 * Delta
-    Else If EnemyY
-    {
-        EnemyY := Abs(EnemyY)
-        Level.Enemies.Remove(EnemyY,"")
-        GuiControl, Hide, EnemyRectangle%EnemyY%
-        Health += 50
-    }
+    ; If (EnemyX || EnemyY > 0)
+        ; Health -= 200 * Delta
+    ; Else If EnemyY
+    ; {
+        ; EnemyY := Abs(EnemyY)
+        ; Level.Enemies.Remove(EnemyY,"")
+        ; GuiControl, Hide, EnemyRectangle%EnemyY%
+        ; Health += 50
+    ; }
     Return, 0
 }
 
 EnemyLogic(Delta) {
-    MoveSpeed := 600, JumpSpeed := 150, SeekDistance := 300
+    MoveSpeed := 600, JumpSpeed := 150, SeekDistance := 200
     for i, rect In Level.Enemies
         if Level.Player.Distance(rect) < SeekDistance
         {
-            rect.WantJump := rect.Y < Level.Player.Y
+            rect.WantJump := rect.Y <= Level.Player.Y
             if rect.WantJump && rect.IntersectsX(Level.Player) ;directly underneath the player
                 rect.NewSpeed.X += MoveSped * Delta * -Sign(Level.Player.X - rect.X)
             else
@@ -209,20 +209,20 @@ EnemyLogic(Delta) {
 }
 
 Physics( delta ) {
-    ; O(n + n*(n + b)) n: entities, b: blocks
-    ents := Level.Entities
+    ; O(N + N*(N + K)) n: entities, b: blocks
+    local entity
     
     ; apply physics, only changes NewSpeed
-    loop % ents.MaxIndex()
-        ents[A_Index].physics(delta)
+    for i, entity in Level.Entities
+        entity.physics(delta)
     
     ; apply changes in speeds to position
-    for i, ent in ents
+    for i, entity in Level.Entities
     {
-        ent.Speed.X := ent.NewSpeed.X
-        ent.Speed.Y := ent.NewSpeed.Y
-        ent.X += ent.Speed.X * delta
-        ent.Y += ent.Speed.Y * delta
+        entity.X += delta * entity.Speed.X := entity.NewSpeed.X
+        entity.Y += delta * entity.Speed.Y := entity.NewSpeed.Y
+        
+        ; msgbox % entity.type "`nvelocities: " entity.speed.x ", " entity.speed.y " (" entity.NewSpeed.X ", " entity.NewSpeed.Y ")`npositions: " entity.X ", " entity.Y
     }
 }
 
@@ -253,9 +253,9 @@ ParseLevel(LevelDefinition) {
     local Level := Object()
 
     Level.Rectangles := []
-    Level.Blocks := []
-    Level.Entities := []
-    Level.Enemies := []
+    Level.Blocks     := []
+    Level.Entities   := []
+    Level.Enemies    := []
     
     If RegExMatch(LevelDefinition,"iS)Blocks\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
     {
@@ -269,21 +269,24 @@ ParseLevel(LevelDefinition) {
         {
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
             rect := new _Rectangle(Entry1,Entry2,Entry3,Entry4)
+            rect.Type :=  "Block" A_Index
             Level.Blocks.Insert(rect)
             Level.Rectangles.Insert(rect)
         }
     }
+    
     If RegExMatch(LevelDefinition,"iS)Player\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
     {
         Entry5 := 0, Entry6 := 0
         StringSplit, Entry, Property, `,, %A_Space%`t`r`n
         
         player := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
+        player.Type := "Player"
         Level.Player := player
         Level.Rectangles.insert(player)
         Level.Entities.insert(player)
     }
-
+    
     If RegExMatch(LevelDefinition,"iS)Goal\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
     {
         StringSplit, Entry, Property, `,, %A_Space%`t`r`n
@@ -305,12 +308,12 @@ ParseLevel(LevelDefinition) {
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
             
             enemy := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
+            enemy.Type := "Enemy" A_Index
             Level.Enemies.insert(enemy)
             Level.Rectangles.insert(enemy)
             Level.Entities.insert(enemy)
         }
     }
-    
     return, Level
 }
 
@@ -368,7 +371,7 @@ class _Rectangle {
 }
 
 class _Entity extends _Rectangle {
-    __new(X,Y,W,H,SpeedX = 0,SpeedY = 0) {
+    __new( X, Y, W, H, SpeedX = 0, SpeedY = 0) {
         this.X := X
         this.Y := Y
         this.W := W
@@ -377,14 +380,11 @@ class _Entity extends _Rectangle {
         this.mass := W * H ; * density
         this.fixed := false
         
-        this.SpeedX := SpeedX
-        this.SpeedY := SpeedY
-        
-        this.JumpSpeed := 200
+        this.JumpSpeed := 150
         
         ; !!! All changes to speed are done on NewSpeed, and copied after all calculations are finished
         this.NewSpeed := { X: SpeedX, Y: SpeedY }
-        this.Speed := this.NewSpeed.Clone()
+        this.Speed := { X: SpeedX, Y: SpeedY }
     }
     
     Physics( delta ) {
@@ -392,30 +392,46 @@ class _Entity extends _Rectangle {
         
         for i, rect in Level.Rectangles
         {
-            x := this.IntersectX(rect)
-            y := this.IntersectY(rect)
-            
-            if !(x && y)
+            if (this == rect)
                 continue
             
-            if (x)
+            X := this.IntersectX(rect)
+            Y := this.IntersectY(rect)
+
+            ; msgbox % "intersect " this.type " & " rect.type "`n" x ", " y
+            
+            if (X == "" || Y == "") ;!(X && Y) 
+                continue
+            
+            if this.type = "player"
+                msgbox % this.type ":  " X ", " Y
+            
+            if (Abs(X) > Abs(Y))
             {
-                this.Friction(delta, rect, "Y")
+                if rect.fixed
+                    this.X += X
                 this.Impact(rect, "X")
+                ; this.Friction(delta, rect, "Y")
             }
-            if (y)
+            else
             {
-                if this.WantJump
-                    this.NewSpeed.Y += this.JumpSpeed * delta
-                this.Friction(delta, rect, "X")
+                if rect.fixed
+                    this.Y += Y
                 this.Impact(rect, "Y")
+                ; this.Friction(delta, rect, "X")
+                
+                if (this.WantJump && Rect.Y = Round(this.Y + this.H))
+                    this.NewSpeed.Y -= this.JumpSpeed + Gravity * delta
+                
+                ; if this.type = "player"
+                    ; tooltip % (this.WantJump && Rect.Y = Round(this.Y + this.H))
             }
         }
     }
     
     Impact( rect, dir ) {
         if rect.fixed
-            this.NewSpeed[dir] *= -Restitution ; / 2 if button is pressed in same direction of Speed[dir]
+            this.NewSpeed[dir] := Floor(this.Speed[dir] * -Restitution) ; / 2 if button is pressed in same direction of Speed[dir]
         else
             this.NewSpeed[dir] := (this.mass*this.Speed[dir] + rect.mass*(rect.Speed[dir] + Restitution*(rect.Speed[dir] - this.Speed[dir])))/(this.mass + rect.mass)
             ; formula slightly modified from: http://en.wikipedia.org/wiki/Coefficient_of_restitution#Speeds_after_impact
@@ -433,18 +449,32 @@ Sign( x ) {
     return x == 0 ? 0 : x < 0 ? -1 : 1
 }
 
+IntersectN(a1, a2, b1, b2) {
+    ; 1's are points, 2's are distances. to change both to points, take out the "\+[ab]1" parts from the min() expression
+    ; returns a positive number if they intersect, 0 if they just touch, and "" if they do not intersect
+    sub := max(a1, b1)
+    r := min(a2+a1-sub, b2+b1-sub)
+    return r >= 0 ? r * (a1 + a2/2 < b1 + b2/2 ? -1 : 1) : ""
+}
+
 min( x* ) {
     ; accepts either an array or args
     if (ObjMaxIndex(x) == 1 && IsObject(x[1]))
         x := x[1]
     r := x[1]
     loop % ObjMaxIndex(x)-1
-        if (x[1] < r)
-            r := x[1]
+        if (x[A_Index+1] < r)
+            r := x[A_Index+1]
     return r
 }
 
-IntersectN( n1, d1, n2, d2 ) {
-    r := -Abs(n1-n2) + min(d1, d2)
-    return r > -1 ? r + 1 : 0
+max( x* ) {
+    ; accepts either an array or args
+    if (ObjMaxIndex(x) == 1 && IsObject(x[1]))
+        x := x[1]
+    r := x[1]
+    loop % ObjMaxIndex(x)-1
+        if (x[A_Index+1] > r)
+            r := x[A_Index+1]
+    return r
 }
