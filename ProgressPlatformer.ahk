@@ -1,7 +1,7 @@
 #NoEnv
 #SingleInstance, Force
 
-    global TargetFrameRate := 40
+    global TargetFrameRate := 100
     global TargetFrameMs := 1000 / TargetFrameRate
     
     global Gravity := 981
@@ -397,34 +397,24 @@ class _Entity extends _Rectangle {
             
             X := this.IntersectX(rect)
             Y := this.IntersectY(rect)
-
-            ; msgbox % "intersect " this.type " & " rect.type "`n" x ", " y
             
-            if (X == "" || Y == "") ;!(X && Y) 
+            if (X == "" || Y == "")
                 continue
-            
-            if this.type = "player"
-                msgbox % this.type ":  " X ", " Y
             
             if (Abs(X) > Abs(Y))
             {
-                if rect.fixed
-                    this.X += X
-                this.Impact(rect, "X")
-                ; this.Friction(delta, rect, "Y")
-            }
-            else
-            {
-                if rect.fixed
-                    this.Y += Y
+                this.Y += Y
                 this.Impact(rect, "Y")
-                ; this.Friction(delta, rect, "X")
+                this.Friction(delta, rect, "X")
                 
                 if (this.WantJump && Rect.Y = Round(this.Y + this.H))
                     this.NewSpeed.Y -= this.JumpSpeed + Gravity * delta
-                
-                ; if this.type = "player"
-                    ; tooltip % (this.WantJump && Rect.Y = Round(this.Y + this.H))
+            }
+            else
+            {
+                this.X += X
+                this.Impact(rect, "X")
+                this.Friction(delta, rect, "Y")
             }
         }
     }
@@ -433,7 +423,7 @@ class _Entity extends _Rectangle {
         if rect.fixed
             this.NewSpeed[dir] := Floor(this.Speed[dir] * -Restitution) ; / 2 if button is pressed in same direction of Speed[dir]
         else
-            this.NewSpeed[dir] := (this.mass*this.Speed[dir] + rect.mass*(rect.Speed[dir] + Restitution*(rect.Speed[dir] - this.Speed[dir])))/(this.mass + rect.mass)
+            this.NewSpeed[dir] := ((this.mass*this.Speed[dir] + rect.mass*(rect.Speed[dir] + Restitution*(rect.Speed[dir] - this.Speed[dir])))/(this.mass + rect.mass)) | 0
             ; formula slightly modified from: http://en.wikipedia.org/wiki/Coefficient_of_restitution#Speeds_after_impact
     }
     
@@ -441,7 +431,8 @@ class _Entity extends _Rectangle {
         ; dir: direction of motion
         ; normal: direction normal to motion
         normal := dir = "Y" ? "X" : "Y" 
-        this.NewSpeed[dir] += Sign(rect.Speed[dir] - this.Speed[dir]) * Friction * Abs(this.Speed[normal])
+        ; this.NewSpeed[dir] += Sign(rect.Speed[dir] - this.Speed[dir]) * Friction * Abs(this.Speed[normal])
+        this.NewSpeed[dir] *= Friction ** delta
     }
 }
 
