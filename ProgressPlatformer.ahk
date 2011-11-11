@@ -7,7 +7,7 @@
     global Friction := 0.01
     global Restitution := 0.6
     
-    global Level, LevelIndex := 3
+    global Level, LevelIndex := 1
     global Left, Right, Jump, Duck, Health
     
     global GameGui
@@ -171,16 +171,16 @@ Physics(Delta)
     ; O(N + N*(N + K)) N: entities, K: blocks
     local entity
     
-    ; apply physics
-    for i, entity in Level.Entities
-        entity.physics(delta)
-    
-    ; apply changes in speeds to position
+    ; apply changes in speeds from last frame to position
     for i, entity in Level.Entities
     {
         entity.X += delta * entity.Speed.X
         entity.Y += delta * entity.Speed.Y
     }
+    
+    ; start physics for this frame
+    for i, entity in Level.Entities
+        entity.physics(delta)
 }
 
 Logic(Delta)
