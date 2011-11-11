@@ -54,7 +54,7 @@ MakeGuis:
     GameGui.hwnd := WinExist()
     
     GameGui.count := []
-    GameGui.count.LevelRectangle  := 0
+    GameGui.count.BlockRectangle  := 0
     GameGui.count.PlayerRectangle := 0
     GameGui.count.GoalRectangle   := 0
     GameGui.count.EnemyRectangle  := 0
@@ -79,8 +79,8 @@ Initialize() {
     
     ;create level
     For Index, rect In Level.Blocks
-        PutProgress(rect.X, rect.Y, rect.W, rect.H, "LevelRectangle", Index, "BackgroundRed")
-
+        PutProgress(rect.X, rect.Y, rect.W, rect.H, "BlockRectangle", A_Index, "BackgroundRed")
+    
     ;create player
     PutProgress(Level.Player.X, Level.Player.Y, Level.Player.W, Level.Player.H, "PlayerRectangle", "", "-Smooth Vertical")
     
@@ -89,7 +89,7 @@ Initialize() {
     
     ;create enemies
     For Index, rect In Level.Enemies
-        PutProgress(rect.X, rect.Y, rect.W, rect.H, "EnemyRectangle", Index, "BackgroundBlue")
+        PutProgress(rect.X, rect.Y, rect.W, rect.H, "EnemyRectangle", A_Index, "BackgroundBlue")
 
     Gui, Show, AutoSize, ProgressPlatformer
     
@@ -122,16 +122,18 @@ HideProgresses() {
 }
 
 Step(Delta) {
+    If !WinActive("ahk_id" GameGui.hwnd)
+        return 0
     If GetKeyState("Tab","P") ;slow motion
         Delta /= 2
     If x := Input()
         Return, 1 ", " x
+    If x := Physics(Delta)
+        Return, 2 ", " x
     If x := Logic(Delta)
         Return, 3 ", " x
     If x := EnemyLogic(Delta)
         Return, 4 ", " x
-    If x := Physics(Delta)
-        Return, 2 ", " x
     If x := Update()
         Return, 5 ", " x
     Return, 0
@@ -145,8 +147,25 @@ Input() {
     Return, 0
 }
 
+Physics( delta ) {
+    ; O(N + N*(N + K)) N: entities, K: blocks
+    local entity
+    
+    ; apply physics, only changes NewSpeed
+    for i, entity in Level.Entities
+        entity.physics(delta)
+    
+    ; apply changes in speeds to position
+    for i, entity in Level.Entities
+    {
+        entity.X += delta * entity.Speed.X := entity.NewSpeed.X
+        entity.Y += delta * entity.Speed.Y := entity.NewSpeed.Y
+        
+        ; msgbox % entity.type "`nvelocities: " entity.speed.x ", " entity.speed.y " (" entity.NewSpeed.X ", " entity.NewSpeed.Y ")`npositions: " entity.X ", " entity.Y
+    }
+}
+
 Logic(Delta) {
-    global EnemyX, EnemyY
     MoveSpeed := 800
     JumpSpeed := 200
     JumpInterval := 250
@@ -171,27 +190,28 @@ Logic(Delta) {
         Level.Player.NewSpeed.X += MoveSpeed * Delta
     
     ; wall climb
-    ; If (Level.Player.IntersectX && (Left || Right))
-    ; {
-        ; Level.Player.NewSpeed.Y -= Gravity * Delta
-        ; If Jump
-            ; Level.Player.NewSpeed.Y += MoveSpeed * Delta
-    ; }
+    If (Level.Player.Intersect.X && (Left || Right))
+    {
+        Level.Player.NewSpeed.Y -= Gravity * Delta
+        If Jump
+            Level.Player.NewSpeed.Y += MoveSpeed * Delta
+    }
     
     Level.Player.WantJump := Jump
     
     Level.Player.H := Duck ? 30 : 40
     
     ; health/enemy killing
-    ; If (EnemyX || EnemyY > 0)
-        ; Health -= 200 * Delta
-    ; Else If EnemyY
-    ; {
-        ; EnemyY := Abs(EnemyY)
-        ; Level.Enemies.Remove(EnemyY,"")
-        ; GuiControl, Hide, EnemyRectangle%EnemyY%
-        ; Health += 50
-    ; }
+    If (Level.Player.EnemyX || Level.Player.EnemyY > 0)
+        Health -= 200 * Delta
+    Else If Level.Player.EnemyY
+    {
+        enemy := Level.Rectangles.Remove(Abs(Level.Player.EnemyY),"")
+        Level.Enemies.Remove(enemy.indices.enemies,"")
+        Level.Entities.Remove(enemy.indices.entities,"")
+        GuiControl, Hide, % "EnemyRectangle" enemy.indices.enemies
+        Health += 50
+    }
     Return, 0
 }
 
@@ -202,28 +222,10 @@ EnemyLogic(Delta) {
         {
             rect.WantJump := rect.Y <= Level.Player.Y
             if rect.WantJump && rect.IntersectsX(Level.Player) ;directly underneath the player
-                rect.NewSpeed.X += MoveSped * Delta * -Sign(Level.Player.X - rect.X)
+                rect.NewSpeed.X += MoveSpeed * Delta * -Sign(Level.Player.X - rect.X)
             else
                 rect.NewSpeed.X += MoveSpeed * Delta * Sign(Level.Player.X - rect.X)
         }
-}
-
-Physics( delta ) {
-    ; O(N + N*(N + K)) n: entities, b: blocks
-    local entity
-    
-    ; apply physics, only changes NewSpeed
-    for i, entity in Level.Entities
-        entity.physics(delta)
-    
-    ; apply changes in speeds to position
-    for i, entity in Level.Entities
-    {
-        entity.X += delta * entity.Speed.X := entity.NewSpeed.X
-        entity.Y += delta * entity.Speed.Y := entity.NewSpeed.Y
-        
-        ; msgbox % entity.type "`nvelocities: " entity.speed.x ", " entity.speed.y " (" entity.NewSpeed.X ", " entity.NewSpeed.Y ")`npositions: " entity.X ", " entity.Y
-    }
 }
 
 Update() {
@@ -270,8 +272,9 @@ ParseLevel(LevelDefinition) {
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
             rect := new _Rectangle(Entry1,Entry2,Entry3,Entry4)
             rect.Type :=  "Block" A_Index
-            Level.Blocks.Insert(rect)
-            Level.Rectangles.Insert(rect)
+            rect.Indices := {}
+            rect.Indices.Blocks     := Level.Blocks.Insert(rect)
+            rect.Indices.Rectangles := Level.Rectangles.Insert(rect)
         }
     }
     
@@ -282,9 +285,10 @@ ParseLevel(LevelDefinition) {
         
         player := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
         player.Type := "Player"
+        player.Indices := {}
         Level.Player := player
-        Level.Rectangles.insert(player)
-        Level.Entities.insert(player)
+        player.Indices.Rectangles := Level.Rectangles.insert(player)
+        player.Indices.Entities   := Level.Entities.insert(player)
     }
     
     If RegExMatch(LevelDefinition,"iS)Goal\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
@@ -309,11 +313,24 @@ ParseLevel(LevelDefinition) {
             
             enemy := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
             enemy.Type := "Enemy" A_Index
-            Level.Enemies.insert(enemy)
-            Level.Rectangles.insert(enemy)
-            Level.Entities.insert(enemy)
+            enemy.Indices := {}
+            enemy.Indices.Enemies    := Level.Enemies.insert(enemy)
+            enemy.Indices.Rectangles := Level.Rectangles.insert(enemy)
+            enemy.Indices.Entities   := Level.Entities.insert(enemy)
         }
     }
+    
+    Level.Width := 0
+    Level.Height := 0
+    for i, Rectangle in Level.Rectangles
+    {
+        if (Rectangle.X + Rectangle.W > Level.Width)
+            Level.Width := Rectangle.X + Rectangle.W
+        if (Rectangle.Y + Rectangle.H > Level.Height)
+            Level.Height := Rectangle.Y + Rectangle.H
+    }
+    Level.Width += 10
+    Level.Height += 10
     return, Level
 }
 
@@ -398,8 +415,19 @@ class _Entity extends _Rectangle {
             X := this.IntersectX(rect)
             Y := this.IntersectY(rect)
             
-            if (X == "" || Y == "")
+            if (X == "" || Y == "") ;|| (X == 0 && Y == 0)
+            {
+                this.Intersect.X := 0
+                this.Intersect.Y := 0
                 continue
+            }
+            this.Intersect.X := X
+            this.Intersect.Y := Y
+            
+            if this.type = "player" && InStr(rect.type, "enemy")
+                this.EnemyX := True, this.EnemyY := i * Sign(Y)
+            else
+                this.EnemyX := False, this.EnemyY := 0
             
             if (Abs(X) > Abs(Y))
             {
@@ -408,7 +436,11 @@ class _Entity extends _Rectangle {
                 this.Friction(delta, rect, "X")
                 
                 if (this.WantJump && Rect.Y = Round(this.Y + this.H))
+                {
                     this.NewSpeed.Y -= this.JumpSpeed + Gravity * delta
+                    if !rect.fixed
+                        rect.NewSpeed.Y += this.JumpSpeed + Gravity * delta
+                }
             }
             else
             {
@@ -421,17 +453,17 @@ class _Entity extends _Rectangle {
     
     Impact( rect, dir ) {
         if rect.fixed
-            this.NewSpeed[dir] := Floor(this.Speed[dir] * -Restitution) ; / 2 if button is pressed in same direction of Speed[dir]
+            this.NewSpeed[dir] := this.Speed[dir] * -Restitution ; / 2 if button is pressed in same direction of Speed[dir]
         else
-            this.NewSpeed[dir] := ((this.mass*this.Speed[dir] + rect.mass*(rect.Speed[dir] + Restitution*(rect.Speed[dir] - this.Speed[dir])))/(this.mass + rect.mass)) | 0
+            this.NewSpeed[dir] := (this.mass*this.Speed[dir] + rect.mass*(rect.Speed[dir] + Restitution*(rect.Speed[dir] - this.Speed[dir])))/(this.mass + rect.mass)
             ; formula slightly modified from: http://en.wikipedia.org/wiki/Coefficient_of_restitution#Speeds_after_impact
     }
     
     Friction( delta, rect, dir ) { ; not sure this is 100% right. 
         ; dir: direction of motion
         ; normal: direction normal to motion
-        normal := dir = "Y" ? "X" : "Y" 
-        ; this.NewSpeed[dir] += Sign(rect.Speed[dir] - this.Speed[dir]) * Friction * Abs(this.Speed[normal])
+        ; normal := dir = "Y" ? "X" : "Y" 
+        ; this.NewSpeed[dir] -= min(this.Speed[dir], Friction * (this.NewSpeed[normal] - this.Speed[normal]) / delta * this.mass)
         this.NewSpeed[dir] *= Friction ** delta
     }
 }
@@ -443,8 +475,10 @@ Sign( x ) {
 IntersectN(a1, a2, b1, b2) {
     ; 1's are points, 2's are distances. to change both to points, take out the "\+[ab]1" parts from the min() expression
     ; returns a positive number if they intersect, 0 if they just touch, and "" if they do not intersect
-    sub := max(a1, b1)
-    r := min(a2+a1-sub, b2+b1-sub)
+    sub := b1 > a1 ? b1 : a1 ; max
+    a := a2 + a1 - sub
+    b := b2 + b1 - sub
+    r := b < a ? b : a ; min
     return r >= 0 ? r * (a1 + a2/2 < b1 + b2/2 ? -1 : 1) : ""
 }
 
