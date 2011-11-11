@@ -1,8 +1,7 @@
 #NoEnv
-#SingleInstance, Force
+#SingleInstance Force
 
-    global TargetFrameRate := 100
-    global TargetFrameMs := 1000 / TargetFrameRate
+    TargetFrameRate := 40
     
     global Gravity := 981
     global Friction := 0.01
@@ -18,47 +17,45 @@
     SetWinDelay, -1
     
     GoSub MakeGuis
-    GoSub GameInit
-return
 
-#IF WinActive("ahk_id" GameGui.hwnd)
-F5::
-GameInit:
-    If Initialize()
+    TargetFrameDelay := 1000 / TargetFrameRate
+    TickFrequency := 0, DllCall("QueryPerformanceFrequency","Int64*",TickFrequency) ;obtain ticks per second
+    PreviousTicks := 0, CurrentTicks := 0
+    Loop
     {
-        MsgBox, Game complete!
-        ExitApp
+        If Initialize()
+            Break
+        DllCall("QueryPerformanceCounter","Int64*",PreviousTicks)
+        Loop
+        {
+            DllCall("QueryPerformanceCounter","Int64*",CurrentTicks)
+            Delta := Round((CurrentTicks - PreviousTicks) / TickFrequency,4)
+            DllCall("QueryPerformanceCounter","Int64*",PreviousTicks)
+            If (Delta > DeltaLimit)
+                Delta := DeltaLimit
+            If Round(TargetFrameDelay - (Delta * 1000)) > 20
+                Sleep, % Round(TargetFrameDelay - (Delta * 1000))
+            If Step(Delta)
+                Break
+        }
     }
-    PreviousTime := A_TickCount
-    SetTimer StepThrough, % TargetFrameMs
-return
-
-StepThrough:
-    Delta := (A_TickCount - PreviousTime) / 1000
-    If (Delta > DeltaLimit)
-        Delta := DeltaLimit
-    PreviousTime := A_TickCount
-    if Step(Delta)
-    {
-        SetTimer, %A_ThisLabel%, Off
-        SetTimer GameInit, -1
-    }
-return
+    MsgBox, Game complete!
+ExitApp
 
 MakeGuis:
     ;create game window
     Gui, Color, Black
     Gui, +OwnDialogs +LastFound
     
-    GameGui := []
-    GameGui.hwnd := WinExist()
+    GameGUI := {}
+    GameGUI.hwnd := WinExist()
     
-    GameGui.count := []
-    GameGui.count.BlockRectangle  := 0
-    GameGui.count.PlayerRectangle := 0
-    GameGui.count.GoalRectangle   := 0
-    GameGui.count.EnemyRectangle  := 0
-return
+    GameGUI.Count := {}
+    GameGUI.Count.LevelRectangle  := 0
+    GameGUI.Count.PlayerRectangle := 0
+    GameGUI.Count.GoalRectangle   := 0
+    GameGUI.Count.EnemyRectangle  := 0
+Return
 
 GuiEscape:
 GuiClose:
@@ -74,12 +71,20 @@ Initialize() {
     If ErrorLevel
         Return, 1
     Level := ParseLevel(LevelDefinition)
-    
-    HideProgresses()
-    
+
+    Gui, +LastFound
+    hWindow := WinExist()
+    PreventRedraw(hWindow)
+
+    For Name, Count In GameGUI.Count
+    {
+        Loop, %Count%
+            GuiControl, Hide, %Name%%A_Index%
+    }
+
     ;create level
-    For Index, rect In Level.Blocks
-        PutProgress(rect.X, rect.Y, rect.W, rect.H, "BlockRectangle", A_Index, "BackgroundRed")
+    For Index, Rectangle In Level.Blocks
+        PutProgress(Rectangle.X, Rectangle.Y, Rectangle.W, Rectangle.H, "BlockRectangle", Index, "BackgroundRed")
     
     ;create player
     PutProgress(Level.Player.X, Level.Player.Y, Level.Player.W, Level.Player.H, "PlayerRectangle", "", "-Smooth Vertical")
@@ -88,8 +93,11 @@ Initialize() {
     PutProgress(Level.Goal.X, Level.Goal.Y, Level.Goal.W, Level.Goal.H, "GoalRectangle", "", "Disabled -VScroll")
     
     ;create enemies
-    For Index, rect In Level.Enemies
-        PutProgress(rect.X, rect.Y, rect.W, rect.H, "EnemyRectangle", A_Index, "BackgroundBlue")
+    For Index, Rectangle In Level.Enemies
+        PutProgress(Rectangle.X, Rectangle.Y, Rectangle.W, Rectangle.H, "EnemyRectangle", Index, "BackgroundBlue")
+
+    AllowRedraw(hWindow)
+    WinSet, Redraw
 
     Gui, Show, AutoSize, ProgressPlatformer
     
@@ -98,44 +106,53 @@ Initialize() {
     GameGui.Height := Height
 }
 
-PutProgress(x, y, w, h, name, i, options) {
+PutProgress(X,Y,W,H,Name,Index,Options)
+{
     global
     local hwnd
-    pos := "x" x " y" y " w" w " h" h
-    if (i > GameGui.count[name] || GameGui.count[name] == 0)
+    If (GameGUI.Count[Name] < Index || GameGUI.Count[Name] == 0)
     {
-        GameGui.count[name]++
-        Gui, Add, Progress, v%name%%i% %pos% %options% hwndhwnd, 0
-        Control, ExStyle, -0x20000, , ahk_id%hwnd% ; WS_EX_STATICEDGE
+        GameGUI.Count[Name]++
+        Gui, Add, Progress, x%X% y%Y% w%W% h%H% v%Name%%Index% %Options% hwndhwnd, 0
+        Control, ExStyle, -0x20000, , ahk_id%hwnd% ;remove WS_EX_STATICEDGE extended style
     }
-    else {
-        GuiControl, Show, %name%%i%
-        GuiControl, Move, %name%%i%, %pos%
+    Else
+    {
+        GuiControl, Show, %Name%%Index%
+        GuiControl, Move, %Name%%Index%, x%X% y%Y% w%W% h%H%
     }
 }
 
-HideProgresses() {
-    global
-    for name, count in GameGui.count
-        loop % count
-            GuiControl, Hide, %name%%A_Index%
+PreventRedraw(hWnd)
+{
+    DetectHidden := A_DetectHiddenWindows
+    DetectHiddenWindows, On
+    SendMessage, 0xB, 0, 0,, ahk_id %hWnd% ;WM_SETREDRAW
+    DetectHiddenWindows, %DetectHidden%
 }
 
-Step(Delta) {
+AllowRedraw(hWnd)
+{
+    DetectHidden := A_DetectHiddenWindows
+    DetectHiddenWindows, On
+    SendMessage, 0xB, 1, 0,, ahk_id %hWnd% ;WM_SETREDRAW
+    DetectHiddenWindows, %DetectHidden%
+}
+
+Step(Delta)
+{
     If !WinActive("ahk_id" GameGui.hwnd)
         return 0
     If GetKeyState("Tab","P") ;slow motion
-        Delta /= 2
-    If x := Input()
-        Return, 1 ", " x
-    If x := Physics(Delta)
-        Return, 2 ", " x
-    If x := Logic(Delta)
-        Return, 3 ", " x
-    If x := EnemyLogic(Delta)
-        Return, 4 ", " x
-    If x := Update()
-        Return, 5 ", " x
+        Delta *= 0.3
+    If Input()
+        Return, 1
+    If Physics(Delta)
+        Return, 2
+    If Logic(Delta)
+        Return, 3
+    If Update()
+        Return, 4
     Return, 0
 }
 
@@ -192,6 +209,7 @@ Logic(Delta) {
     ; wall climb
     If (Level.Player.Intersect.X && (Left || Right))
     {
+        Level.Player.NewSpeed.X *= 0.01
         Level.Player.NewSpeed.Y -= Gravity * Delta
         If Jump
             Level.Player.NewSpeed.Y += MoveSpeed * Delta
@@ -253,6 +271,7 @@ ParseLevel(LevelDefinition) {
     ;       Enemies: AI-controlled entity
     ; 
     local Level := Object()
+    LevelDefinition := RegExReplace(LevelDefinition,"S)#[^\r\n]*")
 
     Level.Rectangles := []
     Level.Blocks     := []
@@ -331,11 +350,12 @@ ParseLevel(LevelDefinition) {
     }
     Level.Width += 10
     Level.Height += 10
-    return, Level
+    Return, Level
 }
 
 class _Rectangle {
-    __new(X,Y,W,H){
+    __new(X,Y,W,H)
+    {
         this.X := X
         this.Y := Y
         this.W := W
@@ -344,37 +364,31 @@ class _Rectangle {
         this.Speed := { X: 0, Y: 0 }
     }
     
-    Center() {
-        return { X: this.X + this.W / 2, Y: this.Y + this.H / 2 }
+    Center()
+    {
+        Return, { X: this.X + (this.W / 2),Y: this.Y + (this.H / 2) }
     }
     
-    ; Distance between the *centers* of two rects
-    CenterDistance( rect ) {
+    ; Distance between the *centers* of two blocks
+    CenterDistance(Rectangle)
+    {
         a := this.Center()
-        b := rect.Center()
-        return Sqrt( Abs(a.X - b.X)**2 + Abs(a.Y - b.Y)**2 )
+        b := Rectangle.Center()
+        Return, Sqrt((Abs(a.X - b.X) ** 2) + (Abs(a.Y - b.Y) ** 2))
     }
     
-    ; calculates the closest distace between two rects (*not* the centers)
-    Distance( rect ) {
-        X := this.IntersectsX(rect) ? 0 : min(Abs(this.X - (rect.X+rect.W)), Abs(rect.X - (this.X+this.W)))
-        Y := this.IntersectsY(rect) ? 0 : min(Abs(this.Y - (rect.Y+rect.H)), Abs(rect.Y - (this.Y+this.H)))
-        return Sqrt(X**2 + Y**2)
+    ; calculates the closest distance between two blocks (*not* the centers)
+    Distance(Rectangle)
+    {
+        X := this.IntersectsX(Rectangle) ? 0 : min(Abs(this.X - (Rectangle.X + Rectangle.W)),Abs(Rectangle.X - (this.X + this.W)))
+        Y := this.IntersectsY(Rectangle) ? 0 : min(Abs(this.Y - (Rectangle.Y + Rectangle.H)),Abs(Rectangle.Y - (this.Y + this.H)))
+        Return, Sqrt((X ** 2) + (Y ** 2))
     }
     
-    ; returns true if this is completely inside rect
-    Inside( rect ) {
-        return (this.X >= rect.X) && (this.Y >= rect.Y) && (this.X + this.W <= rect.X + rect.W) && (this.Y + this.H <= rect.Y + rect.H)
-    }
-    
-    Intersects( rect ) {
-        ; returns a value that can be treated as boolean true if `this` intersects `rect`
-        ; 1 if it intersects and the x-intersection is greater than the y-intersection.
-        ; -1 if it intersects and the y-intersection is greater than the x-intersection.
-        ; 1 if they intersect equally
-        ; 0 if they do not intersect at all.
-        x := this.IntersectsX(rect) 
-        return this.IntersectsY(rect) > x ? -1 : !!x
+    ; Returns true if this is completely inside Rectangle
+    Inside(Rectangle)
+    {
+        Return, (this.X >= Rectangle.X) && (this.Y >= Rectangle.Y) && (this.X + this.W <= Rectangle.X + Rectangle.W) && (this.Y + this.H <= Rectangle.Y + Rectangle.H)
     }
     
     ; returns the amount of intersection or 0
