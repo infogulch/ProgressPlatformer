@@ -214,6 +214,10 @@ Logic(Delta)
         If Jump
             Level.Player.Speed.Y -= MoveSpeed * Delta
     }
+    Else If (Level.Player.Intersect.Y && Jump)
+    {
+        Level.Player.Speed.Y -= Gravity * Delta
+    }
     
     Level.Player.WantJump := Jump
     
@@ -226,10 +230,10 @@ Logic(Delta)
         Health -= 200 * Delta
     Else If Level.Player.EnemyY
     {
-        enemy := Level.Rectangles.Remove(Abs(Level.Player.EnemyY),"")
-        Level.Enemies.Remove(enemy.indices.enemies,"")
-        Level.Entities.Remove(enemy.indices.entities,"")
-        GuiControl, Hide, % "EnemyRectangle" enemy.indices.enemies
+        enemy1 := Level.Rectangles.Remove(Abs(Level.Player.EnemyY),"")
+        enemy2 := Level.Enemies.Remove(enemy1.indices.enemies,"")
+        enemy3 := Level.Entities.Remove(enemy1.indices.entities,"")
+        GuiControl, Hide, % "EnemyRectangle" enemy1.indices.enemies
         Health += 50
     }
     Return, 0
@@ -294,8 +298,8 @@ ParseLevel(LevelDefinition)
             rect := new _Rectangle(Entry1,Entry2,Entry3,Entry4)
             rect.Type :=  "Block" A_Index
             rect.Indices := {}
-            rect.Indices.Blocks     := Level.Blocks.Insert(rect)
-            rect.Indices.Rectangles := Level.Rectangles.Insert(rect)
+            Level.Blocks.Insert(rect)    , rect.Indices.Blocks     := Level.Blocks.MaxIndex()
+            Level.Rectangles.Insert(rect), rect.Indices.Rectangles := Level.Rectangles.MaxIndex()
         }
     }
     
@@ -306,10 +310,10 @@ ParseLevel(LevelDefinition)
         
         player := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
         player.Type := "Player"
-        player.Indices := {}
         Level.Player := player
-        player.Indices.Rectangles := Level.Rectangles.insert(player)
-        player.Indices.Entities   := Level.Entities.insert(player)
+        player.Indices := {}
+        Level.Rectangles.insert(player), player.Indices.Rectangles := Level.Rectangles.MaxIndex()
+        Level.Entities.insert(player)  , player.Indices.Entities   := Level.Entities.MaxIndex()
     }
     
     If RegExMatch(LevelDefinition,"iS)Goal\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
@@ -335,9 +339,9 @@ ParseLevel(LevelDefinition)
             enemy := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
             enemy.Type := "Enemy" A_Index
             enemy.Indices := {}
-            enemy.Indices.Enemies    := Level.Enemies.insert(enemy)
-            enemy.Indices.Rectangles := Level.Rectangles.insert(enemy)
-            enemy.Indices.Entities   := Level.Entities.insert(enemy)
+            Level.Enemies.insert(enemy)   , enemy.Indices.Enemies    := Level.Enemies.MaxIndex()
+            Level.Rectangles.insert(enemy), enemy.Indices.Rectangles := Level.Rectangles.MaxIndex()
+            Level.Entities.insert(enemy)  , enemy.Indices.Entities   := Level.Entities.MaxIndex()
         }
     }
     
@@ -481,7 +485,7 @@ class _Entity extends _Rectangle {
     }
     
     Impact( rect, dir, delta ) {
-        if Abs(this.NewSpeed[dir] / delta) < 3
+        if Abs(this.NewSpeed[dir] / delta) < 5
             this.NewSpeed[dir] := 0
         if rect.fixed
             this.NewSpeed[dir] *= -Restitution ; / 2 if button is pressed in same direction of Speed[dir]
