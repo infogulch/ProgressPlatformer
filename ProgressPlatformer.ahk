@@ -33,6 +33,8 @@
             DllCall("QueryPerformanceCounter","Int64*",PreviousTicks)
             If (Delta > DeltaLimit)
                 Delta := DeltaLimit
+            If (ShowFrameRate && Mod(CurreentTicks, 1024) < 32)
+                GuiControl, , FrameRate, % Round(1 / Delta)
             If Round(TargetFrameDelay - (Delta * 1000)) > 20
                 Sleep, % Round(TargetFrameDelay - (Delta * 1000))
             If Step(Delta)
@@ -42,10 +44,16 @@
     MsgBox, Game complete!
 ExitApp
 
+#if WinActive("ahk_id" GameGui.hwnd)
+
+f::
+    GuiControl, % "Show" (ShowFrameRate := !ShowFrameRate), FrameRate
+return
+
 MakeGuis:
     ;create game window
     Gui, Color, Black
-    Gui, Add, Edit, vFrameRate
+    Gui, Add, Edit, vFrameRate w20 x0 y0 hidden
     Gui, +OwnDialogs +LastFound
     
     GameGUI := {}
@@ -248,11 +256,10 @@ Logic(Delta)
 
 EnemyLogic(Delta)
 {
-    MoveSpeed := 600, SeekDistance := 150
+    MoveSpeed := 600, SeekDistance := 200
     for i, rect In Level.Enemies
     {
-        dist := Level.Player.Distance(rect)
-        rect.Seeking := dist < SeekDistance * (1 + rect.Seeking)
+        rect.Seeking := rect.Seeking || Level.Player.Distance(rect) < SeekDistance 
         if rect.Seeking
         {
             rect.WantJump := rect.Y >= Level.Player.Y
@@ -428,7 +435,7 @@ class _Entity extends _Rectangle {
         this.mass := W * H ; * density
         this.fixed := false
         
-        this.JumpSpeed := 150
+        this.JumpSpeed := 300
         
         this.Seeking := false
         
@@ -458,7 +465,7 @@ class _Entity extends _Rectangle {
             X := this.IntersectX(rect)
             Y := this.IntersectY(rect)
             
-            if (X == "" || Y == "") ;|| (X == 0 && Y == 0)
+            if (X == "" || Y == "")
                 continue
             
             if (Abs(X) > Abs(Y))
@@ -469,16 +476,11 @@ class _Entity extends _Rectangle {
                     if InStr(rect.type, "enemy") && this.EnemyY == 0
                         this.EnemyY := i * Sign(Y)
                 }
-                this.Y += Y
-                this.Impact(rect, "Y", Delta)
-                this.Friction(delta, rect, "X")
-                
-                if (this.WantJump && Rect.Y = Round(this.Y + this.H))
-                {
-                    this.NewSpeed.Y -= this.JumpSpeed + Gravity * delta
-                    if !rect.fixed
-                        rect.NewSpeed.Y += this.JumpSpeed + Gravity * delta
-                }
+                this.Y += Y ;move out of intersection
+                if this.WantJump ;increase speed down and let .Impact() handle the effects on other rects
+                    this.NewSpeed.Y += this.JumpSpeed
+                this.Impact(Delta, rect, "Y")
+                this.Friction(Delta, rect, "X")
             }
             else
             {
@@ -488,14 +490,14 @@ class _Entity extends _Rectangle {
                     if InStr(rect.type, "enemy")
                         this.EnemyX := True
                 }
-                this.X += X
-                this.Impact(rect, "X", Delta)
-                this.Friction(delta, rect, "Y")
+                this.X += X 
+                this.Impact(Delta, rect, "X")
+                this.Friction(Delta, rect, "Y")
             }
         }
     }
     
-    Impact( rect, dir, delta ) {
+    Impact( delta, rect, dir ) {
         if Abs(this.NewSpeed[dir] / delta) < 40
             this.NewSpeed[dir] := 0
         if rect.fixed
