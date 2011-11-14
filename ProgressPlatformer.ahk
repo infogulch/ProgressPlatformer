@@ -4,7 +4,7 @@
     TargetFrameRate := 100
     
     global Gravity := 981
-    global Friction := 0.05
+    global Friction := 0.1
     global Restitution := 0.6
     
     global Level, LevelIndex := 1
@@ -214,11 +214,6 @@ Logic(Delta)
     }
     Level.Player.WantJump := Jump
     
-    ; TODO: prioritize the most recently pressed key
-    If Left
-        Level.Player.Speed.X -= Level.Player.MoveSpeed * Delta
-    If Right
-        Level.Player.Speed.X += Level.Player.MoveSpeed * Delta
     Level.Player.MoveX := Left ? -1 : Right ? 1 : 0
     
     Level.Player.H := Duck ? 30 : 40
@@ -245,13 +240,12 @@ EnemyLogic(Delta)
         if rect.Seeking
         {
             rect.WantJump := rect.Y >= Level.Player.Y
-            rect.Speed.X += rect.MoveSpeed * Delta * Sign(Level.Player.X - rect.X) * (rect.WantJump && rect.IntersectsX(Level.Player) ? -1 : 1)
             rect.MoveX := Sign(Level.Player.center().X - rect.center().X)
         }
     }
 }
 
-Update() 
+Update()
 {
     ;update level
     For Index, Rectangle In Level.Blocks
@@ -399,11 +393,11 @@ class _Rectangle {
     }
     
     ; returns the amount of intersection or 0
-    IntersectX( rect ) {
+    IntersectsX( rect ) {
         return IntersectN(this.X, this.W, rect.X, rect.W)
     }
     
-    IntersectY( rect ) {
+    IntersectsY( rect ) {
         return IntersectN(this.Y, this.H, rect.Y, rect.H)
     }
 }
@@ -431,7 +425,7 @@ class _Entity extends _Rectangle {
     
     Physics( delta ) {
         this.NewSpeed.Y := this.Speed.Y + Gravity * delta
-        this.NewSpeed.X := this.Speed.X
+        this.NewSpeed.X := this.Speed.X + this.MoveX * this.MoveSpeed * Delta
         
         if this.type = "player"
             this.EnemyX := 0, this.EnemyY := 0
@@ -443,8 +437,8 @@ class _Entity extends _Rectangle {
             if (this == rect)
                 continue
             
-            X := this.IntersectX(rect)
-            Y := this.IntersectY(rect)
+            X := this.IntersectsX(rect)
+            Y := this.IntersectsY(rect)
             
             if (X == "" || Y == "")
                 continue
@@ -518,11 +512,12 @@ class _Player extends _Entity {
         
         this.JumpSpeed := 300
         this.MoveSpeed := 800
+        this.MoveX := 0
         
         this.EnemyX := this.EnemyY := 0
-        this.Intersect := {}
+        this.Intersect := { X: 0, Y: 0 }
         
-        this.NewSpeed := {}
+        this.NewSpeed := { X: SpeedX, Y: SpeedY }
         this.Speed := { X: SpeedX, Y: SpeedY }
     }
 }
@@ -539,13 +534,14 @@ class _Enemy extends _Entity {
         
         this.JumpSpeed := 270
         this.MoveSpeed := 600
+        this.MoveX := 0
         this.SeekDistance := 200
         
         this.Seeking := false
         
-        this.Intersect := {}
+        this.Intersect := { X: 0, Y: 0 }
         
-        this.NewSpeed := {}
+        this.NewSpeed := { X: SpeedX, Y: SpeedY }
         this.Speed := { X: SpeedX, Y: SpeedY }
     }
 }
