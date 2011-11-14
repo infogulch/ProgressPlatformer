@@ -193,7 +193,7 @@ Physics(Delta)
     ; apply newspeed to speed
     for i, entity in Level.Entities
     {
-        entity.Speed.X := entity.NewSpeed.X
+        entity.Speed.X := entity.NewSpeed.X + entity.MoveX * entity.MoveSpeed * Delta
         entity.Speed.Y := entity.NewSpeed.Y
     }
 }
@@ -425,7 +425,7 @@ class _Entity extends _Rectangle {
     
     Physics( delta ) {
         this.NewSpeed.Y := this.Speed.Y + Gravity * delta
-        this.NewSpeed.X := this.Speed.X + this.MoveX * this.MoveSpeed * Delta
+        this.NewSpeed.X := this.Speed.X
         
         if this.type = "player"
             this.EnemyX := 0, this.EnemyY := 0
