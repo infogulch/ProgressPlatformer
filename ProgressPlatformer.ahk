@@ -4,7 +4,7 @@
     TargetFrameRate := 100
     
     global Gravity := 981
-    global Friction := 0.01
+    global Friction := 0.05
     global Restitution := 0.6
     
     global Level, LevelIndex := 1
@@ -33,10 +33,9 @@
             DllCall("QueryPerformanceCounter","Int64*",PreviousTicks)
             If (Delta > DeltaLimit)
                 Delta := DeltaLimit
-            If (ShowFrameRate && Mod(CurreentTicks, 1024) < 32)
+            If (ShowFrameRate && (CurreentTicks & 0xfff) < 2)
                 GuiControl, , FrameRate, % Round(1 / Delta)
-            If Round(TargetFrameDelay - (Delta * 1000)) > 20
-                Sleep, % Round(TargetFrameDelay - (Delta * 1000))
+            Sleep, % Round(TargetFrameDelay - (Delta * 1000))
             If Step(Delta)
                 Break
         }
@@ -53,7 +52,7 @@ return
 MakeGuis:
     ;create game window
     Gui, Color, Black
-    Gui, Add, Edit, vFrameRate w20 x0 y0 hidden
+    Gui, Add, Edit, vFrameRate w40 x0 y0 hidden backgroundblack
     Gui, +OwnDialogs +LastFound
     
     GameGUI := {}
@@ -190,18 +189,17 @@ Physics(Delta)
     ; start physics for this frame
     for i, entity in Level.Entities
         entity.physics(delta)
-        
+    
+    ; apply newspeed to speed
     for i, entity in Level.Entities
     {
-        entity.Speed.X := Floor(Abs(entity.NewSpeed.X))*Sign(entity.NewSpeed.X)
-        entity.Speed.Y := Floor(Abs(entity.NewSpeed.Y))*Sign(entity.NewSpeed.Y)
+        entity.Speed.X := entity.NewSpeed.X
+        entity.Speed.Y := entity.NewSpeed.Y
     }
 }
 
 Logic(Delta)
 {
-    MoveSpeed := 800
-    
     Padding := 100
     If (Level.Player.X < -Padding || Level.Player.X > (GameGui.Width + Padding) || Level.Player.Y > (GameGui.Height + Padding)) ;out of bounds
         Return, 1
@@ -214,33 +212,18 @@ Logic(Delta)
         LevelIndex++ ;move to the next level
         Return, 3
     }
+    Level.Player.WantJump := Jump
     
     ; TODO: prioritize the most recently pressed key
     If Left
-        Level.Player.Speed.X -= MoveSpeed * Delta
+        Level.Player.Speed.X -= Level.Player.MoveSpeed * Delta
     If Right
-        Level.Player.Speed.X += MoveSpeed * Delta
-    
-    ; wall climb
-    If (Level.Player.Intersect.X && (Left || Right))
-    {
-        Level.Player.Speed.X *= 0.2
-        Level.Player.Speed.Y -= Gravity * Delta
-        If Jump
-            Level.Player.Speed.Y -= MoveSpeed * Delta
-    }
-    Else If (Level.Player.Intersect.Y && Jump)
-    {
-        Level.Player.Speed.Y -= Gravity * Delta
-    }
-    
-    Level.Player.WantJump := Jump
+        Level.Player.Speed.X += Level.Player.MoveSpeed * Delta
+    Level.Player.MoveX := Left ? -1 : Right ? 1 : 0
     
     Level.Player.H := Duck ? 30 : 40
     
     ; health/enemy killing
-    ; tooltip % Level.Player.EnemyX ", " Level.Player.EnemyY
-    
     If (Level.Player.EnemyX || Level.Player.EnemyY > 0)
         Health -= 200 * Delta
     Else If Level.Player.EnemyY
@@ -256,14 +239,14 @@ Logic(Delta)
 
 EnemyLogic(Delta)
 {
-    MoveSpeed := 600, SeekDistance := 200
     for i, rect In Level.Enemies
     {
-        rect.Seeking := rect.Seeking || Level.Player.Distance(rect) < SeekDistance 
+        rect.Seeking := rect.Seeking || Level.Player.Distance(rect) < rect.SeekDistance 
         if rect.Seeking
         {
             rect.WantJump := rect.Y >= Level.Player.Y
-            rect.Speed.X += MoveSpeed * Delta * Sign(Level.Player.X - rect.X) * (rect.WantJump && rect.IntersectsX(Level.Player) ? -1 : 1)
+            rect.Speed.X += rect.MoveSpeed * Delta * Sign(Level.Player.X - rect.X) * (rect.WantJump && rect.IntersectsX(Level.Player) ? -1 : 1)
+            rect.MoveX := Sign(Level.Player.center().X - rect.center().X)
         }
     }
 }
@@ -276,11 +259,11 @@ Update()
 
     ;update player
     GuiControl,, PlayerRectangle, %Health%
-    GuiControl, Move, PlayerRectangle, % "x" . Level.Player.X . " y" . Level.Player.Y . " w" . Level.Player.W . " h" . Level.Player.H
+    GuiControl, Move, PlayerRectangle, % "x" . Floor(Level.Player.X) . " y" . Ceil(Level.Player.Y) . " w" . Floor(Level.Player.W) . " h" . Floor(Level.Player.H)
 
     ;update enemies
     For Index, Rectangle In Level.Enemies
-        GuiControl, Move, EnemyRectangle%Index%, % "x" . Rectangle.X . " y" . Rectangle.Y . " w" . Rectangle.W . " h" . Rectangle.H
+        GuiControl, Move, EnemyRectangle%Index%, % "x" . Floor(Rectangle.X) . " y" . Ceil(Rectangle.Y) . " w" . Floor(Rectangle.W) . " h" . Floor(Rectangle.H)
     Return, 0
 }
 
@@ -326,7 +309,7 @@ ParseLevel(LevelDefinition)
         Entry5 := 0, Entry6 := 0
         StringSplit, Entry, Property, `,, %A_Space%`t`r`n
         
-        player := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
+        player := new _Player(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
         player.Type := "Player"
         Level.Player := player
         player.Indices := {}
@@ -354,7 +337,7 @@ ParseLevel(LevelDefinition)
             Entry5 := 0, Entry6 := 0
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
             
-            enemy := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
+            enemy := new _Enemy(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
             enemy.Type := "Enemy" A_Index
             enemy.Indices := {}
             Level.Enemies.insert(enemy)   , enemy.Indices.Enemies    := Level.Enemies.MaxIndex()
@@ -442,8 +425,7 @@ class _Entity extends _Rectangle {
         this.EnemyX := this.EnemyY := 0
         this.Intersect := { X: 0, Y: 0 }
         
-        ; !!! All changes to speed are done on NewSpeed, and copied after all calculations are finished
-        this.NewSpeed := { X: SpeedX, Y: SpeedY }
+        this.NewSpeed := {}
         this.Speed := { X: SpeedX, Y: SpeedY }
     }
     
@@ -452,10 +434,9 @@ class _Entity extends _Rectangle {
         this.NewSpeed.X := this.Speed.X
         
         if this.type = "player"
-            this.EnemyX := 0
-            , this.EnemyY := 0
-            , this.Intersect.X := 0
-            , this.Intersect.Y := 0
+            this.EnemyX := 0, this.EnemyY := 0
+        this.Intersect.X := 0
+        this.Intersect.Y := 0
         
         for i, rect in Level.Rectangles
         {
@@ -469,28 +450,39 @@ class _Entity extends _Rectangle {
                 continue
             
             if (Abs(X) > Abs(Y))
-            {
-                if this.type = "player"
-                {
-                    this.Intersect.Y := Y
-                    if InStr(rect.type, "enemy") && this.EnemyY == 0
-                        this.EnemyY := i * Sign(Y)
-                }
+            {   ; collision along horizontal
                 this.Y += Y ;move out of intersection
-                if this.WantJump ;increase speed down and let .Impact() handle the effects on other rects
-                    this.NewSpeed.Y += this.JumpSpeed
-                this.Impact(Delta, rect, "Y")
+                this.Intersect.Y := Y
+                if this.type = "player" && InStr(rect.type, "enemy") && this.EnemyY == 0
+                    this.EnemyY := i * Sign(Y)
+                
+                if (this.Y > rect.Y && this.WantJump && rect.fixed)  ; ceiling stick, no net effect if it's a movable rect
+                    this.NewSpeed.Y -= Gravity * Delta
+                    , this.NewSpeed.Y *= 0.1
+                else {
+                    if (this.Y < rect.Y && this.WantJump)       ; jump: increase speed downward and let .Impact() handle the effects on other rects
+                        this.NewSpeed.Y += this.JumpSpeed
+                    this.Impact(Delta, rect, "Y")
+                }
                 this.Friction(Delta, rect, "X")
             }
             else
-            {
+            {   ; collision along vertical
+                this.X += X
+                this.Intersect.X := X
+                if (Sign(X) == -this.MoveX) ; wall climb
+                {
+                    this.NewSpeed.X *= 0.2
+                    change := Gravity * Delta + this.MoveSpeed * Delta * this.WantJump
+                    this.NewSpeed.Y -= change
+                    if !rect.fixed
+                        rect.Speed.Y += change
+                }
                 if this.type = "player"
-                { 
-                    this.Intersect.X := X
+                {
                     if InStr(rect.type, "enemy")
                         this.EnemyX := True
                 }
-                this.X += X 
                 this.Impact(Delta, rect, "X")
                 this.Friction(Delta, rect, "Y")
             }
@@ -498,8 +490,6 @@ class _Entity extends _Rectangle {
     }
     
     Impact( delta, rect, dir ) {
-        if Abs(this.NewSpeed[dir] / delta) < 40
-            this.NewSpeed[dir] := 0
         if rect.fixed
             this.NewSpeed[dir] *= -Restitution ; / 2 if button is pressed in same direction of Speed[dir]
         else
@@ -516,13 +506,58 @@ class _Entity extends _Rectangle {
     }
 }
 
+class _Player extends _Entity {
+    __new( X, Y, W, H, SpeedX = 0, SpeedY = 0) {
+        this.X := X
+        this.Y := Y
+        this.W := W
+        this.H := H
+        
+        this.mass := W * H ; * density
+        this.fixed := false
+        
+        this.JumpSpeed := 300
+        this.MoveSpeed := 800
+        
+        this.EnemyX := this.EnemyY := 0
+        this.Intersect := {}
+        
+        this.NewSpeed := {}
+        this.Speed := { X: SpeedX, Y: SpeedY }
+    }
+}
+
+class _Enemy extends _Entity {
+    __new( X, Y, W, H, SpeedX = 0, SpeedY = 0) {
+        this.X := X
+        this.Y := Y
+        this.W := W
+        this.H := H
+        
+        this.mass := W * H ; * density
+        this.fixed := false
+        
+        this.JumpSpeed := 270
+        this.MoveSpeed := 600
+        this.SeekDistance := 200
+        
+        this.Seeking := false
+        
+        this.Intersect := {}
+        
+        this.NewSpeed := {}
+        this.Speed := { X: SpeedX, Y: SpeedY }
+    }
+}
+
 Sign( x ) {
     return x == 0 ? 0 : x < 0 ? -1 : 1
 }
 
 IntersectN(a1, a2, b1, b2) {
     ; 1's are points, 2's are distances. to change both to points, take out the "\+[ab]1" parts from the min() expression
-    ; returns a positive number if they intersect, 0 if they just touch, and "" if they do not intersect
+    ; returns a nonzero integer if they intersect, 0 if they just touch, and "" if they do not intersect
+    ; positive if a > b
     sub := b1 > a1 ? b1 : a1 ; max
     a := a2 + a1 - sub
     b := b2 + b1 - sub
