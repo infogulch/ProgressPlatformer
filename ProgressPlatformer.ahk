@@ -161,10 +161,8 @@ Step(Delta)
         Return, 2
     If Logic(Delta)
         Return, 3
-    If EnemyLogic(Delta)
-        Return, 4
     If Update()
-        Return, 5
+        Return, 4
     Return, 0
 }
 
@@ -179,7 +177,7 @@ Input()
 
 Physics(Delta)
 {
-    ; O(N + N*(N + K)) N: entities, K: blocks
+    ; O(2N + N*(N + K)) N: entities, K: blocks
     local entity
     
     ; apply changes in speeds from last frame to position
@@ -203,64 +201,18 @@ Physics(Delta)
 
 Logic(Delta)
 {
-    Padding := 100
-    If (Level.Player.X < -Padding || Level.Player.X > (GameGui.Width + Padding) || Level.Player.Y > (GameGui.Height + Padding)) ;out of bounds
-        Return, 1
-    If (Health <= 0) ;out of health
-        Return, 2
-    If Level.Player.Inside(Level.Goal) ;reached goal
-    {
-        Score := Round(Health)
-        MsgBox, You win!`n`nYour score was %Score%.
-        LevelIndex++ ;move to the next level
-        Return, 3
-    }
-    Level.Player.WantJump := Jump
-    
-    Level.Player.MoveX := Left ? -1 : Right ? 1 : 0
-    
-    Level.Player.H := Duck ? 30 : 40
-    
-    ; health/enemy killing
-    If (Level.Player.EnemyX || Level.Player.EnemyY > 0)
-        Health -= 200 * Delta
-    Else If Level.Player.EnemyY
-    {
-        enemy1 := Level.Rectangles.Remove(Abs(Level.Player.EnemyY),"")
-        enemy2 := Level.Enemies.Remove(enemy1.indices.enemies,"")
-        enemy3 := Level.Entities.Remove(enemy1.indices.entities,"")
-        GuiControl, Hide, % "EnemyRectangle" enemy1.indices.enemies
-        Health += 50
-    }
-    Return, 0
-}
-
-EnemyLogic(Delta)
-{
-    for i, rect In Level.Enemies
-    {
-        rect.Seeking := rect.Seeking || Level.Player.Distance(rect) < rect.SeekDistance 
-        if rect.Seeking
-        {
-            rect.WantJump := rect.Y >= Level.Player.Y
-            rect.MoveX := Sign(Level.Player.center().X - rect.center().X)
-        }
-    }
+    For Index, Entity in Level.Entities
+        Entity.Logic(Delta)
 }
 
 Update()
 {
-    ;update level
-    For Index, Rectangle In Level.Blocks
-        GuiControl, Move, LevelRectangle%Index%, % "x" . Rectangle.X . " y" . Rectangle.Y . " w" . Rectangle.W . " h" . Rectangle.H
-
-    ;update player
+    global
+    local Rectangle, Index
     GuiControl,, PlayerRectangle, %Health%
-    GuiControl, Move, PlayerRectangle, % "x" . Level.Player.X . " y" . Level.Player.Y . " w" . Level.Player.W . " h" . Level.Player.H
-    
-    ;update enemies
-    For Index, Rectangle In Level.Enemies
-        GuiControl, Move, EnemyRectangle%Index%, % "x" . Rectangle.X . " y" . Rectangle.Y . " w" . Rectangle.W . " h" . Rectangle.H
+    ;update everything
+    For Index, Rectangle In Level.Rectangles
+        GuiControl, Move, % Rectangle.Type, % "x" . Rectangle.X . " y" . Rectangle.Y . " w" . Rectangle.W . " h" . Rectangle.H
     Return, 0
 }
 
@@ -294,7 +246,7 @@ ParseLevel(LevelDefinition)
         {
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
             rect := new _Rectangle(Entry1,Entry2,Entry3,Entry4)
-            rect.Type :=  "Block" A_Index
+            rect.Type :=  "BlockRectangle" A_Index
             rect.Indices := {}
             Level.Blocks.Insert(rect)    , rect.Indices.Blocks     := Level.Blocks.MaxIndex()
             Level.Rectangles.Insert(rect), rect.Indices.Rectangles := Level.Rectangles.MaxIndex()
@@ -307,7 +259,7 @@ ParseLevel(LevelDefinition)
         StringSplit, Entry, Property, `,, %A_Space%`t`r`n
         
         player := new _Player(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
-        player.Type := "Player"
+        player.Type := "PlayerRectangle"
         Level.Player := player
         player.Indices := {}
         Level.Rectangles.insert(player), player.Indices.Rectangles := Level.Rectangles.MaxIndex()
@@ -335,7 +287,7 @@ ParseLevel(LevelDefinition)
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
             
             enemy := new _Enemy(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
-            enemy.Type := "Enemy" A_Index
+            enemy.Type := "EnemyRectangle" A_Index
             enemy.Indices := {}
             Level.Enemies.insert(enemy)   , enemy.Indices.Enemies    := Level.Enemies.MaxIndex()
             Level.Rectangles.insert(enemy), enemy.Indices.Rectangles := Level.Rectangles.MaxIndex()
@@ -430,7 +382,7 @@ class _Entity extends _Rectangle {
         this.NewSpeed.Y := this.Speed.Y + Gravity * delta
         this.NewSpeed.X := this.Speed.X
         
-        if this.type = "player"
+        if InStr(this.type, "player")
             this.EnemyX := 0, this.EnemyY := 0
         this.Intersect.X := 0
         this.Intersect.Y := 0
@@ -452,33 +404,33 @@ class _Entity extends _Rectangle {
                 this.Intersect.Y := Y
                 this.Friction(Delta, rect, "X")
                 
-                if (this.Y > rect.Y && this.WantJump && rect.fixed)  ; ceiling stick, no net effect if it's a movable rect
+                if (this.Y > rect.Y && this.WantJump && rect.fixed) ; ceiling stick, no net effect if it's a movable rect
                     this.NewSpeed.Y -= Gravity * Delta
                     , this.NewSpeed.Y *= 0.1
                 else {
-                    if (this.Y < rect.Y && this.WantJump)       ; jump: increase speed downward and let .Impact() handle the effects on other rects
+                    if (this.Y < rect.Y && this.WantJump) ; jump: increase speed *down* and let .Impact() handle the effects on other rects
                         this.NewSpeed.Y += this.JumpSpeed
                     this.Impact(Delta, rect, "Y")
                 }
-                if this.type = "player" && InStr(rect.type, "enemy") && this.EnemyY == 0
+                if InStr(this.type, "player") && InStr(rect.type, "enemy") && this.EnemyY == 0
                     this.EnemyY := i * Sign(Y)
             }
             else
             {   ; collision along vertical
                 this.X += X
                 this.Intersect.X := X
+                this.Friction(Delta, rect, "Y")
+                this.Impact(Delta, rect, "X")
                 
                 if (Sign(X) == -this.MoveX) ; wall climb
                 {
                     this.NewSpeed.Y -= Gravity * Delta + this.MoveSpeed * Delta * this.WantJump
                     if rect.fixed
-                        this.NewSpeed.X *= 0.2
+                        this.NewSpeed.X *= 0.01
                     else
-                        rect.Speed.Y += Gravity * Delta + this.MoveSpeed * Delta * this.WantJump
+                        rect.Speed.Y += (Gravity * Delta + this.MoveSpeed * Delta * this.WantJump) * this.mass / rect.mass
                 }
-                this.Friction(Delta, rect, "Y")
-                this.Impact(Delta, rect, "X")
-                if this.type = "player"
+                if InStr(this.type, "player")
                 {
                     if InStr(rect.type, "enemy")
                         this.EnemyX := True
@@ -513,6 +465,7 @@ class _Player extends _Entity {
         
         this.mass := W * H * 1.5
         this.fixed := false
+        this.padding := 100
         
         this.JumpSpeed := 300
         this.MoveSpeed := 800
@@ -524,6 +477,38 @@ class _Player extends _Entity {
         this.NewSpeed := { X: SpeedX, Y: SpeedY }
         this.Speed := { X: SpeedX, Y: SpeedY }
     }
+    
+    Logic(Delta) {
+        If (this.X < -this.Padding || this.X > (Level.Width + this.Padding) || this.Y > (Level.Height + this.Padding)) ;out of bounds
+            Return, 1
+        If (Health <= 0) ;out of health
+            Return, 2
+        If this.Inside(Level.Goal) ;reached goal
+        {
+            Score := Round(Health)
+            MsgBox, You win!`n`nYour score was %Score%.
+            LevelIndex++ ;move to the next level
+            Return, 3
+        }
+        this.WantJump := Jump
+        
+        this.MoveX := Left ? -1 : Right ? 1 : 0
+        
+        this.H := Duck ? 30 : 40
+        
+        ; health/enemy killing
+        If (this.EnemyX || this.EnemyY > 0)
+            Health -= 200 * Delta
+        Else If this.EnemyY
+        {
+            enemy1 := Level.Rectangles.Remove(Abs(this.EnemyY),"")
+            enemy2 := Level.Enemies.Remove(enemy1.indices.enemies,"")
+            enemy3 := Level.Entities.Remove(enemy1.indices.entities,"")
+            GuiControl, Hide, % "EnemyRectangle" enemy1.indices.enemies
+            Health += 50
+        }
+        Return, 0
+}
 }
 
 class _Enemy extends _Entity {
@@ -539,7 +524,7 @@ class _Enemy extends _Entity {
         this.JumpSpeed := 270
         this.MoveSpeed := 600
         this.MoveX := 0
-        this.SeekDistance := 200
+        this.SeekDistance := 120
         
         this.Seeking := false
         
@@ -547,6 +532,15 @@ class _Enemy extends _Entity {
         
         this.NewSpeed := { X: SpeedX, Y: SpeedY }
         this.Speed := { X: SpeedX, Y: SpeedY }
+    }
+    
+    Logic(Delta) {
+        if this.Seeking || Level.Player.Distance(this) < this.SeekDistance 
+        {
+            this.Seeking := True
+            this.WantJump := this.Y >= Level.Player.Y
+            this.MoveX := Sign(Level.Player.center().X - this.center().X)
+        }
     }
 }
 
