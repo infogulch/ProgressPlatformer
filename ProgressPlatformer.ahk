@@ -4,14 +4,14 @@
     TargetFrameRate := 100
     
     global Gravity := 981
-    global Friction := 0.1
+    global Friction := .01
     global Restitution := 0.6
     
     global Level, LevelIndex := 1
     global Left, Right, Jump, Duck, Health
     
     global GameGui
-    DeltaLimit := 0.05
+    DeltaLimit := 0.015
     
     SetBatchLines, -1
     SetWinDelay, -1
@@ -33,8 +33,6 @@
             DllCall("QueryPerformanceCounter","Int64*",PreviousTicks)
             If (Delta > DeltaLimit)
                 Delta := DeltaLimit
-            If (ShowFrameRate && (CurreentTicks & 0xfff) < 2)
-                GuiControl, , FrameRate, % Round(1 / Delta)
             Sleep, % Round(TargetFrameDelay - (Delta * 1000))
             If Step(Delta)
                 Break
@@ -47,6 +45,11 @@ ExitApp
 
 f::
     GuiControl, % "Show" (ShowFrameRate := !ShowFrameRate), FrameRate
+    SetTimer, ShowFrameRate, % ShowFrameRate ? 200 : "Off"
+return
+
+ShowFrameRate:
+    GuiControl, , FrameRate, % Round(1 / Delta)
 return
 
 MakeGuis:
@@ -253,11 +256,11 @@ Update()
 
     ;update player
     GuiControl,, PlayerRectangle, %Health%
-    GuiControl, Move, PlayerRectangle, % "x" . Floor(Level.Player.X) . " y" . Ceil(Level.Player.Y) . " w" . Floor(Level.Player.W) . " h" . Floor(Level.Player.H)
-
+    GuiControl, Move, PlayerRectangle, % "x" . Level.Player.X . " y" . Level.Player.Y . " w" . Level.Player.W . " h" . Level.Player.H
+    
     ;update enemies
     For Index, Rectangle In Level.Enemies
-        GuiControl, Move, EnemyRectangle%Index%, % "x" . Floor(Rectangle.X) . " y" . Ceil(Rectangle.Y) . " w" . Floor(Rectangle.W) . " h" . Floor(Rectangle.H)
+        GuiControl, Move, EnemyRectangle%Index%, % "x" . Rectangle.X . " y" . Rectangle.Y . " w" . Rectangle.W . " h" . Rectangle.H
     Return, 0
 }
 
@@ -443,12 +446,11 @@ class _Entity extends _Rectangle {
             if (X == "" || Y == "")
                 continue
             
-            if (Abs(X) > Abs(Y))
+            if !(Abs(X) < Abs(Y))
             {   ; collision along horizontal
                 this.Y += Y ;move out of intersection
                 this.Intersect.Y := Y
-                if this.type = "player" && InStr(rect.type, "enemy") && this.EnemyY == 0
-                    this.EnemyY := i * Sign(Y)
+                this.Friction(Delta, rect, "X")
                 
                 if (this.Y > rect.Y && this.WantJump && rect.fixed)  ; ceiling stick, no net effect if it's a movable rect
                     this.NewSpeed.Y -= Gravity * Delta
@@ -458,27 +460,29 @@ class _Entity extends _Rectangle {
                         this.NewSpeed.Y += this.JumpSpeed
                     this.Impact(Delta, rect, "Y")
                 }
-                this.Friction(Delta, rect, "X")
+                if this.type = "player" && InStr(rect.type, "enemy") && this.EnemyY == 0
+                    this.EnemyY := i * Sign(Y)
             }
             else
             {   ; collision along vertical
                 this.X += X
                 this.Intersect.X := X
+                
                 if (Sign(X) == -this.MoveX) ; wall climb
                 {
-                    this.NewSpeed.X *= 0.2
-                    change := Gravity * Delta + this.MoveSpeed * Delta * this.WantJump
-                    this.NewSpeed.Y -= change
-                    if !rect.fixed
-                        rect.Speed.Y += change
+                    this.NewSpeed.Y -= Gravity * Delta + this.MoveSpeed * Delta * this.WantJump
+                    if rect.fixed
+                        this.NewSpeed.X *= 0.2
+                    else
+                        rect.Speed.Y += Gravity * Delta + this.MoveSpeed * Delta * this.WantJump
                 }
+                this.Friction(Delta, rect, "Y")
+                this.Impact(Delta, rect, "X")
                 if this.type = "player"
                 {
                     if InStr(rect.type, "enemy")
                         this.EnemyX := True
                 }
-                this.Impact(Delta, rect, "X")
-                this.Friction(Delta, rect, "Y")
             }
         }
     }
@@ -507,7 +511,7 @@ class _Player extends _Entity {
         this.W := W
         this.H := H
         
-        this.mass := W * H ; * density
+        this.mass := W * H * 1.5
         this.fixed := false
         
         this.JumpSpeed := 300
@@ -544,6 +548,19 @@ class _Enemy extends _Entity {
         this.NewSpeed := { X: SpeedX, Y: SpeedY }
         this.Speed := { X: SpeedX, Y: SpeedY }
     }
+}
+
+class _Block extends _Rectangle {
+    __new(X,Y,W,H)
+    {
+        this.X := X
+        this.Y := Y
+        this.W := W
+        this.H := H
+        this.fixed := true
+        this.Speed := { X: 0, Y: 0 }
+    }
+    
 }
 
 Sign( x ) {
