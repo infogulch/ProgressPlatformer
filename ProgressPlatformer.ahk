@@ -46,15 +46,9 @@ MakeGuis:
     ;create game window
     Gui, Color, Black
     Gui, +OwnDialogs +LastFound
-    
+
     GameGUI := {}
     GameGUI.hwnd := WinExist()
-    
-    GameGUI.Count := {}
-    GameGUI.Count.LevelRectangle  := 0
-    GameGUI.Count.PlayerRectangle := 0
-    GameGUI.Count.GoalRectangle   := 0
-    GameGUI.Count.EnemyRectangle  := 0
 Return
 
 GuiEscape:
@@ -71,31 +65,53 @@ Initialize()
     FileRead, LevelDefinition, %LevelFile%
     If ErrorLevel
         Return, 1
+
+    ;hide all controls
+    If ObjHasKey(Level,"Blocks")
+    {
+        For Index In Level.Blocks
+            GuiControl, Hide, LevelRectangle%Index%
+    }
+    If ObjHasKey(Level,"Platforms")
+    {
+        For Index In Level.Platforms
+            GuiControl, Hide, PlatformRectangle%Index%
+    }
+    If ObjHasKey(Level,"Player")
+        GuiControl, Hide, PlayerRectangle
+    If ObjHasKey(Level,"Goal")
+        GuiControl, Hide, GoalRectangle
+    If ObjHasKey(Level,"Enemies")
+    {
+        For Index, Rectangle In Level.Enemies
+            GuiControl, Hide, EnemyRectangle%Index%
+    }
+
     Level := ParseLevel(LevelDefinition)
+
+    Level.Platforms[1] := new _Platform(50,50,100,20,30,50,1,20) ;wip
 
     Gui, +LastFound
     hWindow := WinExist()
     PreventRedraw(hWindow)
 
-    For Name, Count In GameGUI.Count
-    {
-        Loop, %Count%
-            GuiControl, Hide, %Name%%A_Index%
-    }
-
     ;create level
     For Index, Rectangle In Level.Blocks
-        PutProgress(Rectangle.X, Rectangle.Y, Rectangle.W, Rectangle.H, "LevelRectangle", Index, "BackgroundRed")
+        PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"LevelRectangle",Index,"BackgroundRed")
+
+    ;create platforms
+    For Index, Rectangle In Level.Platforms
+        PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"PlatformRectangle",Index,"BackgroundLime")
 
     ;create player
-    PutProgress(Level.Player.X, Level.Player.Y, Level.Player.W, Level.Player.H, "PlayerRectangle", "", "-Smooth Vertical")
-    
+    PlaceRectangle(Level.Player.X,Level.Player.Y,Level.Player.W,Level.Player.H,"PlayerRectangle","","-Smooth Vertical")
+
     ;create goal
-    PutProgress(Level.Goal.X, Level.Goal.Y, Level.Goal.W, Level.Goal.H, "GoalRectangle", "", "Disabled -VScroll")
-    
+    PlaceRectangle(Level.Goal.X,Level.Goal.Y,Level.Goal.W,Level.Goal.H,"GoalRectangle","","BackgroundWhite")
+
     ;create enemies
     For Index, Rectangle In Level.Enemies
-        PutProgress(Rectangle.X, Rectangle.Y, Rectangle.W, Rectangle.H, "EnemyRectangle", Index, "BackgroundBlue")
+        PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"EnemyRectangle",Index,"BackgroundBlue")
 
     AllowRedraw(hWindow)
     WinSet, Redraw
@@ -103,13 +119,16 @@ Initialize()
     Gui, Show, AutoSize, ProgressPlatformer
 }
 
-PutProgress(X,Y,W,H,Name,Index,Options)
+PlaceRectangle(X,Y,W,H,Name,Index = "",Options = "")
 {
     global
-    local hwnd
-    If (GameGUI.Count[Name] < Index || GameGUI.Count[Name] == 0)
+    static NameCount := Object()
+    local hWnd
+    If !ObjHasKey(NameCount,Name)
+        NameCount[Name] := 0
+    If ((Index = "" && NameCount[Name] = 0) || NameCount[Name] < Index) ;control does not yet exist
     {
-        GameGUI.Count[Name]++
+        NameCount[Name]++
         Gui, Add, Progress, x%X% y%Y% w%W% h%H% v%Name%%Index% %Options% hwndhwnd, 0
         Control, ExStyle, -0x20000, , ahk_id%hwnd% ;remove WS_EX_STATICEDGE extended style
     }
@@ -166,7 +185,6 @@ Logic(Delta)
     MoveSpeed := 800
     JumpSpeed := 200
     JumpInterval := 250
-    
     Padding := 100
     WinGetPos,,, Width, Height, % "ahk_id" . GameGUI.hwnd
     If (Level.Player.X < -Padding || Level.Player.X > (Width + Padding) || Level.Player.Y > (Height + Padding)) ;out of bounds
@@ -180,7 +198,38 @@ Logic(Delta)
         LevelIndex++ ;move to the next level
         Return, 3
     }
-    
+    PlayerLogic(Delta)
+
+    If (EnemyX || EnemyY > 0)
+        Health -= 200 * Delta
+    Else If EnemyY
+    {
+        EnemyY := Abs(EnemyY)
+        ObjRemove(Level.Enemies,EnemyY,"")
+        GuiControl, Hide, EnemyRectangle%EnemyY%
+        Health += 50
+    }
+
+    EnemyLogic(Delta)
+
+    For Index, Rectangle In Level.Platforms
+    {
+        If (Rectangle.X < Rectangle.RangeX || Rectangle.X > (Rectangle.RangeX + Rectangle.RangeW))
+            Rectangle.SpeedX *= -1
+        If (Rectangle.Y < Rectangle.RangeY || Rectangle.Y > (Rectangle.RangeY + Rectangle.RangeH))
+            Rectangle.SpeedY *= -1
+        Rectangle.X += Rectangle.SpeedX * Delta
+        Rectangle.Y += Rectangle.SpeedY * Delta
+    }
+    Return, 0
+}
+
+PlayerLogic(Delta)
+{
+    global Left, Right, Jump, Duck, Level, Gravity
+    MoveSpeed := 800
+    JumpSpeed := 200
+    JumpInterval := 250
     If Left
         Level.Player.SpeedX -= MoveSpeed * Delta
     If Right
@@ -198,19 +247,6 @@ Logic(Delta)
     Level.Player.LastContact += Delta
 
     Level.Player.H := Duck ? 30 : 40
-
-    If (EnemyX || EnemyY > 0)
-        Health -= 200 * Delta
-    Else If EnemyY
-    {
-        EnemyY := Abs(EnemyY)
-        ObjRemove(Level.Enemies,EnemyY,"")
-        GuiControl, Hide, EnemyRectangle%EnemyY%
-        Health += 50
-    }
-
-    EnemyLogic(Delta)
-    Return, 0
 }
 
 EnemyLogic(Delta)
@@ -243,7 +279,9 @@ Physics(Delta)
     Level.Player.SpeedY += Gravity * Delta ;process gravity
     Level.Player.X += Level.Player.SpeedX * Delta
     Level.Player.Y -= Level.Player.SpeedY * Delta ;process momentum
+    Level.Player.IntersectX := 0, Level.Player.IntersectY := 0
     EntityPhysics(Delta,Level.Player,Level.Blocks) ;process collision with level
+    EntityPhysics(Delta,Level.Player,Level.Platforms) ;process collision with platforms
 
     EnemyX := 0, EnemyY := 0
     For Index, Rectangle In Level.Enemies
@@ -251,6 +289,7 @@ Physics(Delta)
         ;process enemy
         Rectangle.SpeedY += Gravity * Delta ;process gravity
         Rectangle.X += Rectangle.SpeedX * Delta, Rectangle.Y -= Rectangle.SpeedY * Delta ;process momentum
+        Rectangle.IntersectX := 0, Rectangle.IntersectY := 0
         EntityPhysics(Delta,Rectangle,Level.Blocks) ;process collision with level
         Temp1 := ObjClone(Level.Enemies), ObjRemove(Temp1,Index,"") ;create an array of enemies excluding the current one
         EntityPhysics(Delta,Rectangle,Temp1) ;process collision with other enemies
@@ -307,32 +346,32 @@ EntityPhysics(Delta,Entity,Rectangles)
             TotalIntersectX += Abs(IntersectX)
         }
     }
-    Entity.IntersectX := TotalIntersectX, Entity.IntersectY := TotalIntersectY
     If CollisionY
     {
         Entity.LastContact := 0
+        Entity.IntersectY := TotalIntersectY
         Entity.SpeedX *= (Friction * TotalIntersectY) ** Delta ;apply friction
     }
     If CollisionX
     {
-        Entity.IntersectY := TotalIntersectY
+        Entity.IntersectX := TotalIntersectX
         Entity.SpeedY *= (Friction * TotalIntersectX) ** Delta ;apply friction
     }
 }
 
 Update()
 {
-    ;update level
-    For Index, Rectangle In Level.Blocks
-        GuiControl, Move, LevelRectangle%Index%, % "x" . Rectangle.X . " y" . Rectangle.Y . " w" . Rectangle.W . " h" . Rectangle.H
+    ;update platforms
+    For Index, Rectangle In Level.Platforms
+        PlaceRectangle(Round(Rectangle.X),Round(Rectangle.Y),Round(Rectangle.W),Round(Rectangle.H),"PlatformRectangle",Index)
 
     ;update player
     GuiControl,, PlayerRectangle, %Health%
-    GuiControl, Move, PlayerRectangle, % "x" . Level.Player.X . " y" . Level.Player.Y . " w" . Level.Player.W . " h" . Level.Player.H
+    PlaceRectangle(Round(Level.Player.X),Round(Level.Player.Y),Round(Level.Player.W),Round(Level.Player.H),"PlayerRectangle")
 
     ;update enemies
     For Index, Rectangle In Level.Enemies
-        GuiControl, Move, EnemyRectangle%Index%, % "x" . Rectangle.X . " y" . Rectangle.Y . " w" . Rectangle.W . " h" . Rectangle.H
+        PlaceRectangle(Round(Rectangle.X),Round(Rectangle.Y),Round(Rectangle.W),Round(Rectangle.H),"EnemyRectangle",Index)
     Return, 0
 }
 
@@ -371,6 +410,23 @@ ParseLevel(LevelDefinition)
             ; Level.Rectangles.Insert(rect)
         }
     }
+
+    Level.Platforms := []
+    If RegExMatch(LevelDefinition,"iS)Platforms\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){4,7})*",Property)
+    {
+        StringReplace, Property, Property, `r,, All
+        StringReplace, Property, Property, %A_Space%,, All
+        StringReplace, Property, Property, %A_Tab%,, All
+        While, InStr(Property,"`n`n")
+            StringReplace, Property, Property, `n`n, `n, All
+        Property := Trim(Property,"`n")
+        Loop, Parse, Property, `n
+        {
+            Entry6 := 0, Entry7 := 100
+            StringSplit, Entry, A_LoopField, `,, %A_Space%`t
+            ObjInsert(Level.Platforms,new _Platform(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6,Entry7))
+        }
+    }
     If RegExMatch(LevelDefinition,"iS)Player\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
     {
         Entry5 := 0, Entry6 := 0
@@ -401,7 +457,6 @@ ParseLevel(LevelDefinition)
         {
             Entry5 := 0, Entry6 := 0
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
-            
             enemy := new _Entity(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
             Level.Enemies.insert(enemy)
             ; Level.Rectangles.insert(enemy)
@@ -411,7 +466,8 @@ ParseLevel(LevelDefinition)
     Return, Level
 }
 
-class _Rectangle {
+class _Rectangle
+{
     __new(X,Y,W,H)
     {
         this.X := X
@@ -424,7 +480,7 @@ class _Rectangle {
     
     Center()
     {
-        Return, {X: this.X + (this.W / 2),Y: this.Y + (this.H / 2)}
+        Return, { X: this.X + (this.W / 2),Y: this.Y + (this.H / 2) }
     }
     
     ; Distance between the *centers* of two blocks
@@ -468,16 +524,16 @@ class _Rectangle {
     }
 }
 
-class _Entity extends _Rectangle {
-    __new(X,Y,W,H,SpeedX = 0,SpeedY = 0) {
+class _Entity extends _Rectangle
+{
+    __new(X,Y,W,H,SpeedX = 0,SpeedY = 0)
+    {
         this.X := X
         this.Y := Y
         this.W := W
         this.H := H
-        
         this.mass := W * H ; * density
         this.fixed := false
-        
         this.SpeedX := SpeedX
         this.SpeedY := SpeedY
         
@@ -545,6 +601,28 @@ _Physics( delta ) {
 
 Sign( x ) {
     return x == 0 ? 0 : x < 0 ? -1 : 1
+}
+
+class _Platform extends _Rectangle
+{
+    __new(X,Y,W,H,RangeStart,RangeLength = 0,Horizontal = 1,Speed = 0)
+    {
+        this.X := X
+        this.Y := Y
+        this.W := W
+        this.H := H
+        If Horizontal
+        {
+            this.RangeX := RangeStart, this.RangeY := Y
+            this.RangeW := RangeLength, this.RangeH := 0
+            this.SpeedX := Speed, this.SpeedY := 0
+        }
+        Else
+        {
+            this.RangeX := X, this.RangeY := RangeStart, this.RangeW := 0, this.RangeH := RangeLength
+            this.SpeedX := 0, this.SpeedY := Speed
+        }
+    }
 }
 
 Collide(Rectangle1,Rectangle2,ByRef IntersectX = "",ByRef IntersectY = "")
