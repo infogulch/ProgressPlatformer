@@ -57,10 +57,9 @@ MakeGuis:
     Gui, Color, Black
     Gui, Add, Edit, vFrameRate w40 x0 y0 hidden backgroundblack
     Gui, +OwnDialogs +LastFound
-    
+
     GameGUI := {}
     GameGUI.hwnd := WinExist()
-    
     GameGUI.Count := {}
     GameGUI.Count.BlockRectangle  := 0
     GameGUI.Count.PlayerRectangle := 0
@@ -82,6 +81,28 @@ Initialize()
     FileRead, LevelDefinition, %LevelFile%
     If ErrorLevel
         Return, 1
+
+    ;hide all controls
+    If ObjHasKey(Level,"Blocks")
+    {
+        For Index In Level.Blocks
+            GuiControl, Hide, LevelRectangle%Index%
+    }
+    If ObjHasKey(Level,"Platforms")
+    {
+        For Index In Level.Platforms
+            GuiControl, Hide, PlatformRectangle%Index%
+    }
+    If ObjHasKey(Level,"Player")
+        GuiControl, Hide, PlayerRectangle
+    If ObjHasKey(Level,"Goal")
+        GuiControl, Hide, GoalRectangle
+    If ObjHasKey(Level,"Enemies")
+    {
+        For Index, Rectangle In Level.Enemies
+            GuiControl, Hide, EnemyRectangle%Index%
+    }
+
     Level := ParseLevel(LevelDefinition)
 
     PreventRedraw(GameGui.hwnd)
@@ -92,21 +113,29 @@ Initialize()
             GuiControl, Hide, %Name%%A_Index%
     }
     
+    Gui, +LastFound
+    hWindow := WinExist()
+    PreventRedraw(hWindow)
+    
     ;create level
     For Index, Rectangle In Level.Blocks
-        PutProgress(Rectangle.X, Rectangle.Y, Rectangle.W, Rectangle.H, "BlockRectangle", Index, "BackgroundRed")
-    
+        PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"LevelRectangle",Index,"BackgroundRed")
+
+    ;create platforms
+    For Index, Rectangle In Level.Platforms
+        PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"PlatformRectangle",Index,"BackgroundLime")
+
     ;create player
-    PutProgress(Level.Player.X, Level.Player.Y, Level.Player.W, Level.Player.H, "PlayerRectangle", "", "-Smooth Vertical")
-    
+    PlaceRectangle(Level.Player.X,Level.Player.Y,Level.Player.W,Level.Player.H,"PlayerRectangle","","-Smooth Vertical")
+
     ;create goal
-    PutProgress(Level.Goal.X, Level.Goal.Y, Level.Goal.W, Level.Goal.H, "GoalRectangle", "", "Disabled -VScroll")
-    
+    PlaceRectangle(Level.Goal.X,Level.Goal.Y,Level.Goal.W,Level.Goal.H,"GoalRectangle","","BackgroundWhite")
+
     ;create enemies
     For Index, Rectangle In Level.Enemies
-        PutProgress(Rectangle.X, Rectangle.Y, Rectangle.W, Rectangle.H, "EnemyRectangle", Index, "BackgroundBlue")
-    
-    AllowRedraw(GameGui.hwnd)
+        PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"EnemyRectangle",Index,"BackgroundBlue")
+
+    AllowRedraw(hWindow)
     WinSet, Redraw
 
     Gui, Show, % "W" Level.Width " H" Level.Height, ProgressPlatformer
@@ -116,13 +145,16 @@ Initialize()
     GameGui.Height := Height
 }
 
-PutProgress(X,Y,W,H,Name,Index,Options)
+PlaceRectangle(X,Y,W,H,Name,Index = "",Options = "")
 {
     global
-    local hwnd
-    If (GameGUI.Count[Name] < Index || GameGUI.Count[Name] == 0)
+    static NameCount := Object()
+    local hWnd
+    If !ObjHasKey(NameCount,Name)
+        NameCount[Name] := 0
+    If ((Index = "" && NameCount[Name] = 0) || NameCount[Name] < Index) ;control does not yet exist
     {
-        GameGUI.Count[Name]++
+        NameCount[Name]++
         Gui, Add, Progress, x%X% y%Y% w%W% h%H% v%Name%%Index% %Options% hwndhwnd, 0
         Control, ExStyle, -0x20000, , ahk_id%hwnd% ;remove WS_EX_STATICEDGE extended style
     }
@@ -233,6 +265,7 @@ ParseLevel(LevelDefinition)
     Level.Blocks     := []
     Level.Entities   := []
     Level.Enemies    := []
+    Level.Platforms := []
     
     If RegExMatch(LevelDefinition,"iS)Blocks\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
     {
@@ -252,7 +285,21 @@ ParseLevel(LevelDefinition)
             Level.Rectangles.Insert(rect), rect.Indices.Rectangles := Level.Rectangles.MaxIndex()
         }
     }
-    
+    If RegExMatch(LevelDefinition,"iS)Platforms\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){4,7})*",Property)
+    {
+        StringReplace, Property, Property, `r,, All
+        StringReplace, Property, Property, %A_Space%,, All
+        StringReplace, Property, Property, %A_Tab%,, All
+        While, InStr(Property,"`n`n")
+            StringReplace, Property, Property, `n`n, `n, All
+        Property := Trim(Property,"`n")
+        Loop, Parse, Property, `n
+        {
+            Entry6 := 0, Entry7 := 100
+            StringSplit, Entry, A_LoopField, `,, %A_Space%`t
+            ObjInsert(Level.Platforms,new _Platform(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6,Entry7))
+        }
+    }
     If RegExMatch(LevelDefinition,"iS)Player\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
     {
         Entry5 := 0, Entry6 := 0
@@ -309,7 +356,8 @@ ParseLevel(LevelDefinition)
     Return, Level
 }
 
-class _Rectangle {
+class _Rectangle
+{
     __new(X,Y,W,H)
     {
         this.X := X
@@ -363,7 +411,6 @@ class _Entity extends _Rectangle {
         this.Y := Y
         this.W := W
         this.H := H
-        
         this.mass := W * H ; * density
         this.fixed := false
         
