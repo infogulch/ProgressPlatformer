@@ -168,9 +168,9 @@ Step(Delta)
 
 Input()
 {
-    Left  := GetKeyState("Left","P")  || GetKeyState("A", "P")
     Duck  := GetKeyState("Down","P")  || GetKeyState("S", "P")
     Jump  := GetKeyState("Up","P")    || GetKeyState("W", "P")
+    Left  := GetKeyState("Left","P")  || GetKeyState("A", "P")
     Right := GetKeyState("Right","P") || GetKeyState("D", "P")
     Return, 0
 }
@@ -216,7 +216,7 @@ Update()
     Return, 0
 }
 
-ParseLevel(LevelDefinition) 
+ParseLevel(LevelDefinition)
 {
     ; Object/Level Heirarchy:
     ; 
