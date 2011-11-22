@@ -63,7 +63,9 @@ return
 MakeGuis:
     ;create game window
     Gui, Color, Black
-    Gui, Add, Edit, vFrameRate w40 x0 y0 hidden backgroundblack
+    Gui, Font, s14 Cwhite
+    Gui, Add, Text, vFrameRate x0 y0 hidden backgroundtrans, 000
+    Gui, Font, s10
     Gui, +OwnDialogs +LastFound
 
     GameGUI := {}
