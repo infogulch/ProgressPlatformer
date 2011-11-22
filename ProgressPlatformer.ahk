@@ -11,6 +11,10 @@
     global Left, Right, Jump, Duck, Health
     
     global GameGui
+    
+    global LOG, DEBUG := False
+    OnExit QuitGame
+    
     DeltaLimit := 0.05
     
     SetBatchLines, -1
@@ -18,6 +22,7 @@
     
     GoSub MakeGuis
     
+    DeltaList := []
     TargetFrameDelay := 1000 / TargetFrameRate
     TickFrequency := 0, DllCall("QueryPerformanceFrequency","Int64*",TickFrequency) ;obtain ticks per second
     PreviousTicks := 0, CurrentTicks := 0
@@ -33,6 +38,9 @@
             PreviousTicks := CurrentTicks
             If (Delta > DeltaLimit)
                 Delta := DeltaLimit
+            if ShowFrameRate
+                DeltaList.Insert(1, Delta)
+                , DeltaList.Remove(TargetFrameRate)
             Sleep, % Round(TargetFrameDelay - (Delta * 1000))
             If Step(Delta)
                 Break
@@ -49,7 +57,7 @@ f::
 return
 
 ShowFrameRate:
-    GuiControl, , FrameRate, % Round(1 / Delta)
+    GuiControl, , FrameRate, % Round(1 / mean(DeltaList))
 return
 
 MakeGuis:
@@ -67,6 +75,9 @@ MakeGuis:
     GameGUI.Count.EnemyRectangle  := 0
 Return
 
+QuitGame:
+    if DEBUG
+        FileAppend, %LOG%, log.txt
 GuiEscape:
 GuiClose:
 ExitApp
@@ -216,7 +227,7 @@ Physics(Delta)
     for i, entity in Level.Entities
     {
         entity.X += delta * entity.Speed.X
-        entity.Y += delta * entity.Speed.Y
+        entity.Y += delta * entity.Speed.Y += Gravity * Delta
     }
     
     ; start physics for this frame
@@ -427,7 +438,7 @@ class _Entity extends _Rectangle {
     }
     
     Physics( delta ) {
-        this.NewSpeed.Y := this.Speed.Y + Gravity * delta
+        this.NewSpeed.Y := this.Speed.Y
         this.NewSpeed.X := this.Speed.X
         
         if InStr(this.type, "player")
@@ -446,7 +457,7 @@ class _Entity extends _Rectangle {
             if (X == "" || Y == "")
                 continue
             
-            if !(Abs(X) < Abs(Y))
+            if (Abs(X) > Abs(Y))
             {   ; collision along horizontal
                 this.Y += Y ;move out of intersection
                 this.Intersect.Y := Y
@@ -454,7 +465,6 @@ class _Entity extends _Rectangle {
                 
                 if (this.Y > rect.Y && this.WantJump && rect.fixed) ; ceiling stick, no net effect if it's a movable rect
                     this.NewSpeed.Y -= Gravity * Delta
-                    , this.NewSpeed.Y *= 0.1
                 else {
                     if (this.Y < rect.Y && this.WantJump) ; jump: increase speed *down* and let .Impact() handle the effects on other rects
                         this.NewSpeed.Y += this.JumpSpeed
@@ -470,26 +480,25 @@ class _Entity extends _Rectangle {
                 this.Friction(Delta, rect, "Y")
                 this.Impact(Delta, rect, "X", X)
                 
-                if (Sign(X) == -this.MoveX) ; wall climb
+                if (Sign(X) == -this.MoveX && this.MoveX) ; wall climb
                 {
-                    this.NewSpeed.Y -= Gravity * Delta + this.MoveSpeed * Delta * this.WantJump
+                    this.NewSpeed.Y -= Gravity * Delta + (this.WantJump ? this.MoveSpeed * Delta : 0)
                     if rect.fixed
-                        this.NewSpeed.X *= 0.01
+                        this.NewSpeed.X *= 0.1
                     else
                         rect.Speed.Y += (Gravity * Delta + this.MoveSpeed * Delta * this.WantJump) * this.mass / rect.mass
                 }
-                if InStr(this.type, "player")
-                {
-                    if InStr(rect.type, "enemy")
-                        this.EnemyX := True
-                }
+                if InStr(this.type, "player") && InStr(rect.type, "enemy")
+                    this.EnemyX := True
             }
         }
     }
     
-    Impact( delta, rect, dir, int ) {
-        if rect.fixed
-            this.NewSpeed[dir] *= -Restitution ; / 2 if button is pressed in same direction of Speed[dir]
+    Impact(delta, rect, dir, int ) {
+        if (Sign(this.NewSpeed[dir]) == Sign(-int)) && Abs(this.NewSpeed[dir]) < 60
+            this.NewSpeed[dir] := 0
+        else if rect.fixed
+            this.NewSpeed[dir] *= -Restitution
         else
             this.NewSpeed[dir] := (this.mass*this.NewSpeed[dir] + rect.mass*(rect.Speed[dir] + Restitution*(rect.Speed[dir] - this.NewSpeed[dir])))/(this.mass + rect.mass)
             ; formula slightly modified from: http://en.wikipedia.org/wiki/Coefficient_of_restitution#Speeds_after_impact
@@ -640,4 +649,11 @@ max( x* ) {
         if (x[A_Index+1] > r)
             r := x[A_Index+1]
     return r
+}
+
+mean( arr ) {
+    ret := 0
+    loop % arr.MaxIndex()
+        ret += arr[A_Index]
+    return ret / arr.MaxIndex()
 }
