@@ -1,7 +1,7 @@
 #NoEnv
 #SingleInstance Force
 
-    TargetFrameRate := 100
+    TargetFrameRate := 50
     
     global Gravity := 981
     global Friction := .01
@@ -11,7 +11,7 @@
     global Left, Right, Jump, Duck, Health
     
     global GameGui
-    DeltaLimit := 0.015
+    DeltaLimit := 0.05
     
     SetBatchLines, -1
     SetWinDelay, -1
@@ -29,8 +29,8 @@
         Loop
         {
             DllCall("QueryPerformanceCounter","Int64*",CurrentTicks)
-            Delta := Round((CurrentTicks - PreviousTicks) / TickFrequency,4)
-            DllCall("QueryPerformanceCounter","Int64*",PreviousTicks)
+            Delta := (CurrentTicks - PreviousTicks) / TickFrequency
+            PreviousTicks := CurrentTicks
             If (Delta > DeltaLimit)
                 Delta := DeltaLimit
             Sleep, % Round(TargetFrameDelay - (Delta * 1000))
@@ -202,8 +202,8 @@ Input()
 {
     Duck  := GetKeyState("Down","P")  || GetKeyState("S", "P")
     Jump  := GetKeyState("Up","P")    || GetKeyState("W", "P")
-    Left  := GetKeyState("Left","P")  || GetKeyState("A", "P")
-    Right := GetKeyState("Right","P") || GetKeyState("D", "P")
+    Left  := GetKeyState("Left","P")  || GetKeyState("A", "P") ? (Left  ? Left  : A_TickCount) : 0
+    Right := GetKeyState("Right","P") || GetKeyState("D", "P") ? (Right ? Right : A_TickCount) : 0
     Return, 0
 }
 
@@ -234,7 +234,8 @@ Physics(Delta)
 Logic(Delta)
 {
     For Index, Entity in Level.Entities
-        Entity.Logic(Delta)
+        if ret := Entity.Logic(Delta)
+            return ret
 }
 
 Update()
@@ -457,7 +458,7 @@ class _Entity extends _Rectangle {
                 else {
                     if (this.Y < rect.Y && this.WantJump) ; jump: increase speed *down* and let .Impact() handle the effects on other rects
                         this.NewSpeed.Y += this.JumpSpeed
-                    this.Impact(Delta, rect, "Y")
+                    this.Impact(Delta, rect, "Y", Y)
                 }
                 if InStr(this.type, "player") && InStr(rect.type, "enemy") && this.EnemyY == 0
                     this.EnemyY := i * Sign(Y)
@@ -467,7 +468,7 @@ class _Entity extends _Rectangle {
                 this.X += X
                 this.Intersect.X := X
                 this.Friction(Delta, rect, "Y")
-                this.Impact(Delta, rect, "X")
+                this.Impact(Delta, rect, "X", X)
                 
                 if (Sign(X) == -this.MoveX) ; wall climb
                 {
@@ -486,7 +487,7 @@ class _Entity extends _Rectangle {
         }
     }
     
-    Impact( delta, rect, dir ) {
+    Impact( delta, rect, dir, int ) {
         if rect.fixed
             this.NewSpeed[dir] *= -Restitution ; / 2 if button is pressed in same direction of Speed[dir]
         else
