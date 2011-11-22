@@ -77,7 +77,7 @@ GuiEscape:
 GuiClose:
 ExitApp
 
-Initialize() 
+Initialize()
 {
     Health := 100
 
@@ -247,9 +247,9 @@ ParseLevel(LevelDefinition)
     
     Level.Rectangles := []
     Level.Blocks     := []
+    Level.Platforms  := []
     Level.Entities   := []
     Level.Enemies    := []
-    Level.Platforms := []
     
     If RegExMatch(LevelDefinition,"iS)Blocks\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
     {
@@ -262,7 +262,7 @@ ParseLevel(LevelDefinition)
         Loop, Parse, Property, `n
         {
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
-            rect := new _Rectangle(Entry1,Entry2,Entry3,Entry4)
+            rect := new _Block(Entry1,Entry2,Entry3,Entry4)
             rect.Type :=  "BlockRectangle" A_Index
             rect.Indices := {}
             Level.Blocks.Insert(rect)    , rect.Indices.Blocks     := Level.Blocks.MaxIndex()
@@ -342,7 +342,7 @@ ParseLevel(LevelDefinition)
 
 class _Rectangle
 {
-    __new(X,Y,W,H)
+    __new(X,Y,W,H,type)
     {
         this.X := X
         this.Y := Y
@@ -350,6 +350,14 @@ class _Rectangle
         this.H := H
         this.fixed := true
         this.Speed := { X: 0, Y: 0 }
+        this.type := type
+        this.Indices := {}
+        this.LevelRef()
+    }
+    
+    LevelRef()
+    {
+        
     }
     
     Center()
@@ -380,17 +388,34 @@ class _Rectangle
     }
     
     ; returns the amount of intersection or 0
-    IntersectsX( rect ) {
+    IntersectsX( rect )
+    {
         return IntersectN(this.X, this.W, rect.X, rect.W)
     }
     
-    IntersectsY( rect ) {
+    IntersectsY( rect )
+    {
         return IntersectN(this.Y, this.H, rect.Y, rect.H)
     }
 }
 
-class _Entity extends _Rectangle {
-    __new( X, Y, W, H, SpeedX = 0, SpeedY = 0) {
+class _Block extends _Rectangle
+{
+    __new(X,Y,W,H)
+    {
+        this.X := X
+        this.Y := Y
+        this.W := W
+        this.H := H
+        this.fixed := true
+        this.Speed := { X: 0, Y: 0 }
+    }
+}
+
+class _Entity extends _Rectangle
+{
+    __new( X, Y, W, H, SpeedX = 0, SpeedY = 0)
+    {
         this.X := X
         this.Y := Y
         this.W := W
@@ -409,7 +434,8 @@ class _Entity extends _Rectangle {
         this.Speed := { X: SpeedX, Y: SpeedY }
     }
     
-    Physics( delta ) {
+    Physics( delta )
+    {
         this.NewSpeed.Y := this.Speed.Y
         this.NewSpeed.X := this.Speed.X
         
@@ -437,7 +463,8 @@ class _Entity extends _Rectangle {
                 
                 if (this.Y > rect.Y && this.WantJump && rect.fixed) ; ceiling stick, no net effect if it's a movable rect
                     this.NewSpeed.Y -= Gravity * Delta
-                else {
+                else
+                {
                     if (this.Y < rect.Y && this.WantJump) ; jump: increase speed *down* and let .Impact() handle the effects on other rects
                         this.NewSpeed.Y += this.JumpSpeed
                     this.Impact(Delta, rect, "Y", Y)
@@ -466,7 +493,8 @@ class _Entity extends _Rectangle {
         }
     }
     
-    Impact(delta, rect, dir, int ) {
+    Impact(delta, rect, dir, int )
+    {
         if (Sign(this.NewSpeed[dir]) == Sign(-int)) && Abs(this.NewSpeed[dir]) < 60
             this.NewSpeed[dir] := 0
         else if rect.fixed
@@ -476,7 +504,8 @@ class _Entity extends _Rectangle {
             ; formula slightly modified from: http://en.wikipedia.org/wiki/Coefficient_of_restitution#Speeds_after_impact
     }
     
-    Friction( delta, rect, dir ) { ; not sure this is 100% right. 
+    Friction( delta, rect, dir )
+    {   ; not sure this is 100% right. 
         ; dir: direction of motion
         ; normal: direction normal to motion
         ; normal := dir = "Y" ? "X" : "Y" 
@@ -485,8 +514,10 @@ class _Entity extends _Rectangle {
     }
 }
 
-class _Player extends _Entity {
-    __new( X, Y, W, H, SpeedX = 0, SpeedY = 0) {
+class _Player extends _Entity
+{
+    __new( X, Y, W, H, SpeedX = 0, SpeedY = 0)
+    {
         this.X := X
         this.Y := Y
         this.W := W
@@ -507,7 +538,8 @@ class _Player extends _Entity {
         this.Speed := { X: SpeedX, Y: SpeedY }
     }
     
-    Logic(Delta) {
+    Logic(Delta)
+    {
         If (this.X < -this.Padding || this.X > (Level.Width + this.Padding) || this.Y > (Level.Height + this.Padding)) ;out of bounds
             Return, 1
         If (Health <= 0) ;out of health
@@ -540,8 +572,10 @@ class _Player extends _Entity {
 }
 }
 
-class _Enemy extends _Entity {
-    __new( X, Y, W, H, SpeedX = 0, SpeedY = 0) {
+class _Enemy extends _Entity
+{
+    __new( X, Y, W, H, SpeedX = 0, SpeedY = 0)
+    {
         this.X := X
         this.Y := Y
         this.W := W
@@ -559,11 +593,12 @@ class _Enemy extends _Entity {
         
         this.Intersect := { X: 0, Y: 0 }
         
-        this.NewSpeed := { X: SpeedX, Y: SpeedY }
+        this.NewSpeed := {}
         this.Speed := { X: SpeedX, Y: SpeedY }
     }
     
-    Logic(Delta) {
+    Logic(Delta)
+    {
         if this.Seeking || Level.Player.Distance(this) < this.SeekDistance 
         {
             this.Seeking := True
@@ -573,24 +608,13 @@ class _Enemy extends _Entity {
     }
 }
 
-class _Block extends _Rectangle {
-    __new(X,Y,W,H)
-    {
-        this.X := X
-        this.Y := Y
-        this.W := W
-        this.H := H
-        this.fixed := true
-        this.Speed := { X: 0, Y: 0 }
-    }
-    
-}
-
-Sign( x ) {
+Sign( x )
+{
     return x == 0 ? 0 : x < 0 ? -1 : 1
 }
 
-IntersectN(a1, a2, b1, b2) {
+IntersectN(a1, a2, b1, b2)
+{
     ; 1's are points, 2's are distances. to change both to points, take out the "\+[ab]1" parts from the min() expression
     ; returns a nonzero integer if they intersect, 0 if they just touch, and "" if they do not intersect
     ; positive if a > b
@@ -601,7 +625,8 @@ IntersectN(a1, a2, b1, b2) {
     return r >= 0 ? r * (a1 + a2/2 < b1 + b2/2 ? -1 : 1) : ""
 }
 
-min( x* ) {
+min( x* )
+{
     ; accepts either an array or args
     if (ObjMaxIndex(x) == 1 && IsObject(x[1]))
         x := x[1]
@@ -612,7 +637,8 @@ min( x* ) {
     return r
 }
 
-max( x* ) {
+max( x* )
+{
     ; accepts either an array or args
     if (ObjMaxIndex(x) == 1 && IsObject(x[1]))
         x := x[1]
@@ -623,7 +649,8 @@ max( x* ) {
     return r
 }
 
-mean( arr ) {
+mean( arr )
+{
     ret := 0
     loop % arr.MaxIndex()
         ret += arr[A_Index]
