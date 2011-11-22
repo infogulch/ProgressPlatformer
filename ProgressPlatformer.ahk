@@ -88,11 +88,11 @@ Initialize()
     If ErrorLevel
         Return, 1
 
-    ;hide all controls
+    ;hide all rectangles
     For Index, Rectangle In Level.Rectangles
-        GuiControl, Hide, EnemyRectangle%Index%
+        GuiControl, Hide, % Rectangle.type
     
-    Level := ParseLevel(LevelDefinition)
+    ParseLevel(LevelDefinition)
     
     PreventRedraw(GameGui.hwnd)
     
@@ -103,24 +103,24 @@ Initialize()
     ;create level
     For Index, Rectangle In Level.Blocks
         PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"LevelRectangle",Index,"BackgroundRed")
-
+    
     ;create platforms
     For Index, Rectangle In Level.Platforms
         PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"PlatformRectangle",Index,"BackgroundLime")
-
+    
     ;create player
     PlaceRectangle(Level.Player.X,Level.Player.Y,Level.Player.W,Level.Player.H,"PlayerRectangle","","-Smooth Vertical")
-
+    
     ;create goal
     PlaceRectangle(Level.Goal.X,Level.Goal.Y,Level.Goal.W,Level.Goal.H,"GoalRectangle","","BackgroundWhite")
-
+    
     ;create enemies
     For Index, Rectangle In Level.Enemies
         PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"EnemyRectangle",Index,"BackgroundBlue")
-
+    
     AllowRedraw(hWindow)
     WinSet, Redraw
-
+    
     Gui, Show, % "W" Level.Width " H" Level.Height, ProgressPlatformer
     
     WinGetPos,,, Width, Height, % "ahk_id" GameGui.hwnd
@@ -133,7 +133,7 @@ PlaceRectangle(X,Y,W,H,Name,Index = "",Options = "")
     global
     static NameCount := Object()
     local hWnd
-    If !ObjHasKey(NameCount,Name)
+    If !NameCount.HasKey(Name)
         NameCount[Name] := 0
     If ((Index = "" && NameCount[Name] = 0) || NameCount[Name] < Index) ;control does not yet exist
     {
@@ -242,7 +242,7 @@ ParseLevel(LevelDefinition)
     ;       Player: player-controlled entity
     ;       Enemies: AI-controlled entity
     ; 
-    local Level := Object()
+    Level := Object()
     LevelDefinition := RegExReplace(LevelDefinition,"S)#[^\r\n]*")
     
     Level.Rectangles := []
@@ -262,11 +262,7 @@ ParseLevel(LevelDefinition)
         Loop, Parse, Property, `n
         {
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
-            rect := new _Block(Entry1,Entry2,Entry3,Entry4)
-            rect.Type :=  "BlockRectangle" A_Index
-            rect.Indices := {}
-            Level.Blocks.Insert(rect)    , rect.Indices.Blocks     := Level.Blocks.MaxIndex()
-            Level.Rectangles.Insert(rect), rect.Indices.Rectangles := Level.Rectangles.MaxIndex()
+            (new _Block(Entry1,Entry2,Entry3,Entry4,"BlockRectangle" A_Index))
         }
     }
     If RegExMatch(LevelDefinition,"iS)Platforms\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){4,7})*",Property)
@@ -281,7 +277,7 @@ ParseLevel(LevelDefinition)
         {
             Entry6 := 0, Entry7 := 100
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
-            ObjInsert(Level.Platforms,new _Platform(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6,Entry7))
+            (new _Platform(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6,Entry7,"PlatformRectangle" A_Index))
         }
     }
     If RegExMatch(LevelDefinition,"iS)Player\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
@@ -289,21 +285,14 @@ ParseLevel(LevelDefinition)
         Entry5 := 0, Entry6 := 0
         StringSplit, Entry, Property, `,, %A_Space%`t`r`n
         
-        player := new _Player(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
-        player.Type := "PlayerRectangle"
-        Level.Player := player
-        player.Indices := {}
-        Level.Rectangles.insert(player), player.Indices.Rectangles := Level.Rectangles.MaxIndex()
-        Level.Entities.insert(player)  , player.Indices.Entities   := Level.Entities.MaxIndex()
+        Level.Player := new _Player(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6,"PlayerRectangle")
     }
-    
     If RegExMatch(LevelDefinition,"iS)Goal\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
     {
         StringSplit, Entry, Property, `,, %A_Space%`t`r`n
-        Level.Goal := new _Rectangle(Entry1,Entry2,Entry3,Entry4)
+        Level.Goal := new _Rectangle(Entry1,Entry2,Entry3,Entry4, "GoalRectangle")
         ; the goal is handled specially and not used for collisions, so omit from Level.Rectangles
     }
-    
     If RegExMatch(LevelDefinition,"iS)Enemies\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
     {
         StringReplace, Property, Property, `r,, All
@@ -317,12 +306,7 @@ ParseLevel(LevelDefinition)
             Entry5 := 0, Entry6 := 0
             StringSplit, Entry, A_LoopField, `,, %A_Space%`t
             
-            enemy := new _Enemy(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
-            enemy.Type := "EnemyRectangle" A_Index
-            enemy.Indices := {}
-            Level.Enemies.insert(enemy)   , enemy.Indices.Enemies    := Level.Enemies.MaxIndex()
-            Level.Rectangles.insert(enemy), enemy.Indices.Rectangles := Level.Rectangles.MaxIndex()
-            Level.Entities.insert(enemy)  , enemy.Indices.Entities   := Level.Entities.MaxIndex()
+            (new _Enemy(Entry1,Entry2,Entry3,Entry4,Entry5,Entry6,"EnemyRectangle" A_Index))
         }
     }
     
@@ -337,7 +321,6 @@ ParseLevel(LevelDefinition)
     }
     Level.Width += 10
     Level.Height += 10
-    Return, Level
 }
 
 class _Rectangle
@@ -350,14 +333,23 @@ class _Rectangle
         this.H := H
         this.fixed := true
         this.Speed := { X: 0, Y: 0 }
+        
         this.type := type
         this.Indices := {}
-        this.LevelRef()
     }
     
-    LevelRef()
+    LevelAdd()
     {
-        
+        Level.Rectangles.Insert(this)
+        this.Indices.Rectangles := Level.Rectangles.MaxIndex()
+    }
+    
+    LevelRemove()
+    {
+        for type, index in this.Indices
+            Level[type].remove(index, "")
+        GuiControl, Hide, % this.type
+        return this
     }
     
     Center()
@@ -399,9 +391,21 @@ class _Rectangle
     }
 }
 
+class _Area extends _Rectangle
+{
+    __new(X, Y, W, H, Callout)
+    {
+        this.X := X
+        this.Y := Y
+        this.W := W
+        this.H := H
+        this.Logic := Callout
+    }
+}
+
 class _Block extends _Rectangle
 {
-    __new(X,Y,W,H)
+    __new(X,Y,W,H,type)
     {
         this.X := X
         this.Y := Y
@@ -409,12 +413,57 @@ class _Block extends _Rectangle
         this.H := H
         this.fixed := true
         this.Speed := { X: 0, Y: 0 }
+        
+        this.type := type
+        this.Indices := {}
+        this.LevelAdd()
+    }
+    
+    LevelAdd()
+    {
+        Level.Blocks.Insert(this)
+        this.Indices.Blocks := Level.Blocks.MaxIndex()
+        base.LevelAdd()
+    }
+}
+
+class _Platform extends _Rectangle
+{
+    __new(X,Y,W,H,RangeStart,RangeLength,Horizontal,Speed,type)
+    {
+        this.X := X
+        this.Y := Y
+        this.W := W
+        this.H := H
+        
+        this.type := type
+        this.Indices := {}
+        this.LevelAdd()
+        
+        If Horizontal
+        {
+            this.RangeX := RangeStart, this.RangeY := Y
+            this.RangeW := RangeLength, this.RangeH := 0
+            this.SpeedX := Speed, this.SpeedY := 0
+        }
+        Else
+        {
+            this.RangeX := X, this.RangeY := RangeStart, this.RangeW := 0, this.RangeH := RangeLength
+            this.SpeedX := 0, this.SpeedY := Speed
+        }
+    }
+    
+    LevelAdd()
+    {
+        Level.Platforms.Insert(this)
+        this.Indices.Platforms := Level.Platforms.MaxIndex()
+        base.LevelAdd()
     }
 }
 
 class _Entity extends _Rectangle
 {
-    __new( X, Y, W, H, SpeedX = 0, SpeedY = 0)
+    __new( X, Y, W, H, SpeedX, SpeedY, type)
     {
         this.X := X
         this.Y := Y
@@ -422,6 +471,10 @@ class _Entity extends _Rectangle
         this.H := H
         this.mass := W * H ; * density
         this.fixed := false
+        
+        this.type := type
+        this.Indices := {}
+        this.LevelAdd()
         
         this.JumpSpeed := 300
         
@@ -432,6 +485,13 @@ class _Entity extends _Rectangle
         
         this.NewSpeed := {}
         this.Speed := { X: SpeedX, Y: SpeedY }
+    }
+    
+    LevelAdd()
+    {
+        Level.Entities.Insert(this)
+        this.Indices.Entities := Level.Entities.MaxIndex()
+        base.LevelAdd()
     }
     
     Physics( delta )
@@ -469,8 +529,8 @@ class _Entity extends _Rectangle
                         this.NewSpeed.Y += this.JumpSpeed
                     this.Impact(Delta, rect, "Y", Y)
                 }
-                if InStr(this.type, "player") && InStr(rect.type, "enemy") && this.EnemyY == 0
-                    this.EnemyY := i * Sign(Y)
+                if InStr(this.type, "player") && InStr(rect.type, "enemy") && !IsObject(this.EnemyY)
+                    this.EnemyY := rect
             }
             else
             {   ; collision along vertical
@@ -512,11 +572,17 @@ class _Entity extends _Rectangle
         ; this.NewSpeed[dir] -= min(this.Speed[dir], Friction * (this.NewSpeed[normal] - this.Speed[normal]) / delta * this.mass)
         this.NewSpeed[dir] *= Friction ** delta
     }
+    
+    OutOfBounds()
+    {
+        If (this.X < -this.Padding || this.X > (Level.Width + this.Padding) || this.Y > (Level.Height + this.Padding)) ;out of bounds
+            Return, 1
+    }
 }
 
 class _Player extends _Entity
 {
-    __new( X, Y, W, H, SpeedX = 0, SpeedY = 0)
+    __new( X, Y, W, H, SpeedX, SpeedY, type)
     {
         this.X := X
         this.Y := Y
@@ -526,6 +592,10 @@ class _Player extends _Entity
         this.mass := W * H * 1.5
         this.fixed := false
         this.padding := 100
+        
+        this.type := type
+        this.Indices := {}
+        this.LevelAdd()
         
         this.JumpSpeed := 300
         this.MoveSpeed := 800
@@ -538,10 +608,17 @@ class _Player extends _Entity
         this.Speed := { X: SpeedX, Y: SpeedY }
     }
     
+    LevelAdd()
+    {
+        Level.Players.Insert(this)
+        this.Indices.Players := Level.Players.MaxIndex()
+        base.LevelAdd()
+    }
+    
     Logic(Delta)
     {
-        If (this.X < -this.Padding || this.X > (Level.Width + this.Padding) || this.Y > (Level.Height + this.Padding)) ;out of bounds
-            Return, 1
+        If this.OutOfBounds()
+            Return 1
         If (Health <= 0) ;out of health
             Return, 2
         If this.Inside(Level.Goal) ;reached goal
@@ -558,23 +635,20 @@ class _Player extends _Entity
         this.H := Duck ? 30 : 40
         
         ; health/enemy killing
-        If (this.EnemyX || this.EnemyY > 0)
+        If (this.EnemyX || IsObject(this.EnemyY) && this.Y > this.EnemyY.Y)
             Health -= 200 * Delta
-        Else If this.EnemyY
+        Else If IsObject(this.EnemyY)
         {
-            enemy1 := Level.Rectangles.Remove(Abs(this.EnemyY),"")
-            enemy2 := Level.Enemies.Remove(enemy1.indices.enemies,"")
-            enemy3 := Level.Entities.Remove(enemy1.indices.entities,"")
-            GuiControl, Hide, % "EnemyRectangle" enemy1.indices.enemies
+            this.EnemyY.LevelRemove()
             Health += 50
         }
         Return, 0
-}
+    }
 }
 
 class _Enemy extends _Entity
 {
-    __new( X, Y, W, H, SpeedX = 0, SpeedY = 0)
+    __new( X, Y, W, H, SpeedX, SpeedY, type)
     {
         this.X := X
         this.Y := Y
@@ -584,10 +658,15 @@ class _Enemy extends _Entity
         this.mass := W * H ; * density
         this.fixed := false
         
+        this.type := type
+        this.Indices := {}
+        this.LevelAdd()
+        
         this.JumpSpeed := 270
         this.MoveSpeed := 600
         this.MoveX := 0
         this.SeekDistance := 120
+        this.padding := 300
         
         this.Seeking := false
         
@@ -597,9 +676,18 @@ class _Enemy extends _Entity
         this.Speed := { X: SpeedX, Y: SpeedY }
     }
     
+    LevelAdd()
+    {
+        Level.Enemies.Insert(this)
+        this.Indices.Enemies := Level.Enemies.MaxIndex()
+        base.LevelAdd()
+    }
+    
     Logic(Delta)
     {
-        if this.Seeking || Level.Player.Distance(this) < this.SeekDistance 
+        if this.OutOfBounds()
+            this.LevelRemove()
+        else if this.Seeking || Level.Player.Distance(this) < this.SeekDistance 
         {
             this.Seeking := True
             this.WantJump := this.Y >= Level.Player.Y
