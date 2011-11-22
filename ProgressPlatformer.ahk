@@ -68,11 +68,6 @@ MakeGuis:
 
     GameGUI := {}
     GameGUI.hwnd := WinExist()
-    GameGUI.Count := {}
-    GameGUI.Count.BlockRectangle  := 0
-    GameGUI.Count.PlayerRectangle := 0
-    GameGUI.Count.GoalRectangle   := 0
-    GameGUI.Count.EnemyRectangle  := 0
 Return
 
 QuitGame:
@@ -94,35 +89,12 @@ Initialize()
         Return, 1
 
     ;hide all controls
-    If ObjHasKey(Level,"Blocks")
-    {
-        For Index In Level.Blocks
-            GuiControl, Hide, LevelRectangle%Index%
-    }
-    If ObjHasKey(Level,"Platforms")
-    {
-        For Index In Level.Platforms
-            GuiControl, Hide, PlatformRectangle%Index%
-    }
-    If ObjHasKey(Level,"Player")
-        GuiControl, Hide, PlayerRectangle
-    If ObjHasKey(Level,"Goal")
-        GuiControl, Hide, GoalRectangle
-    If ObjHasKey(Level,"Enemies")
-    {
-        For Index, Rectangle In Level.Enemies
-            GuiControl, Hide, EnemyRectangle%Index%
-    }
-
+    For Index, Rectangle In Level.Rectangles
+        GuiControl, Hide, EnemyRectangle%Index%
+    
     Level := ParseLevel(LevelDefinition)
-
+    
     PreventRedraw(GameGui.hwnd)
-
-    For Name, Count In GameGUI.Count
-    {
-        Loop, %Count%
-            GuiControl, Hide, %Name%%A_Index%
-    }
     
     Gui, +LastFound
     hWindow := WinExist()
