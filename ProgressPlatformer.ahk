@@ -477,7 +477,7 @@ class _Entity extends _Block
     
     Impact(delta, rect, dir, int )
     {
-        if (Sign(this.NewSpeed[dir]) == Sign(-int)) && Abs(this.NewSpeed[dir]) < 60
+        if (Sign(this.NewSpeed[dir]) == Sign(-int)) && Abs(this.NewSpeed[dir]) < 50
             this.NewSpeed[dir] := 0
         else if rect.independent
             this.NewSpeed[dir] := (this.NewSpeed[dir] - rect.Speed[dir]) * -Restitution + rect.Speed[dir]
@@ -618,8 +618,20 @@ class _Enemy extends _Entity
 
 Logic_MovingPlatform(this, Delta)
 {
-    If (this.X > max(this.End.X, this.Start.X) || this.X < min(this.end.Y, this.Start.X)) || (this.Y > max(this.End.Y, this.Start.Y) || this.Y < min(this.end.Y, this.Start.Y))
+    If (this.X > max(this.End.X, this.Start.X) || this.X < min(this.end.Y, this.Start.X) || this.Y > max(this.End.Y, this.Start.Y) || this.Y < min(this.end.Y, this.Start.Y))
+    {
         this.Cycle *= -1, this.Speed.X *= -1, this.Speed.Y *= -1
+        
+        if this.X > max(this.End.X, this.Start.X)
+            this.X := max(this.End.X, this.Start.X)
+        else if this.X < min(this.end.Y, this.Start.X)
+            this.X := min(this.end.Y, this.Start.X)
+        
+        if this.Y > max(this.End.Y, this.Start.Y)
+            this.Y := max(this.End.Y, this.Start.Y)
+        else if this.Y < min(this.end.Y, this.Start.Y)
+            this.Y := min(this.end.Y, this.Start.Y)
+    }
     this.X += Delta * (this.Start.X - this.End.X) / this.Cycle
     this.Y += Delta * (this.Start.Y - this.End.Y) / this.Cycle
 }
