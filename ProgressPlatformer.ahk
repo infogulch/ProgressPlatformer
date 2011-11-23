@@ -7,7 +7,7 @@
     global Friction := .01
     global Restitution := 0.6
     
-    global Level, LevelIndex := 1
+    global Level, LevelIndex := 4
     global Left, Right, Jump, Duck, Health
     
     global GameGui
@@ -104,17 +104,17 @@ Initialize()
     
     ;create platforms
     For Index, Rectangle In Level.Platforms
-        PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"PlatformRectangle",Index,"Background" Rectangle.Color)
+        PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"PlatformRectangle",Index,"+Background" Rectangle.Color)
     
     ;create player
     PlaceRectangle(Level.Player.X,Level.Player.Y,Level.Player.W,Level.Player.H,"PlayerRectangle","","-Smooth Vertical")
     
     ;create goal
-    PlaceRectangle(Level.Goal.X,Level.Goal.Y,Level.Goal.W,Level.Goal.H,"GoalRectangle","","BackgroundWhite")
+    PlaceRectangle(Level.Goal.X,Level.Goal.Y,Level.Goal.W,Level.Goal.H,"GoalRectangle","","+BackgroundWhite")
     
     ;create enemies
     For Index, Rectangle In Level.Enemies
-        PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"EnemyRectangle",Index,"BackgroundBlue")
+        PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"EnemyRectangle",Index,"+BackgroundBlue")
     
     AllowRedraw(hWindow)
     WinSet, Redraw
@@ -141,6 +141,9 @@ PlaceRectangle(X,Y,W,H,Name,Index = "",Options = "")
     }
     Else
     {
+        GuiControl, %Options%, %Name%%Index%
+        GuiControlGet, hwnd, hwnd, %Name%%Index%
+        Control, ExStyle, -0x20000, , ahk_id%hwnd%
         GuiControl, Show, %Name%%Index%
         GuiControl, Move, %Name%%Index%, x%X% y%Y% w%W% h%H%
     }
@@ -215,8 +218,8 @@ Physics(Delta)
 
 Logic(Delta)
 {
-    For Index, Entity in Level.Entities
-        if ret := Entity.Logic(Delta)
+    For Index, Rectangle in Level.Rectangles
+        if ret := Rectangle.Logic.(Rectangle, Delta)
             return ret
 }
 
@@ -254,64 +257,21 @@ ParseLevel(LevelDefinition)
     Level.Entities   := []
     Level.Enemies    := []
     
-    If RegExMatch(LevelDefinition,"iS)Blocks\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
+    If RegExMatch(LevelDefinition,"iS)\s*Blocks\s*:\s*\K(?:-?\d+\s*(?:,\s*-?\d+\s*){3,7})*",Property)
     {
-        StringReplace, Property, Property, `r,, All
-        StringReplace, Property, Property, %A_Space%,, All
-        StringReplace, Property, Property, %A_Tab%,, All
-        While, InStr(Property,"`n`n")
-            StringReplace, Property, Property, `n`n, `n, All
-        Property := Trim(Property,"`n")
+        Property := RegExReplace(Property, "(\r?\n){2,}", "$1")
         Loop, Parse, Property, `n
-        {
-            StringSplit, Entry, A_LoopField, `,, %A_Space%`t
-            (new _Platform("PlatformRectangle" A_Index, Entry1, Entry2, Entry3, Entry4))
-        }
-    }
-    If RegExMatch(LevelDefinition,"iS)Platforms\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){4,7})*",Property)
-    {
-        StringReplace, Property, Property, `r,, All
-        StringReplace, Property, Property, %A_Space%,, All
-        StringReplace, Property, Property, %A_Tab%,, All
-        While, InStr(Property,"`n`n")
-            StringReplace, Property, Property, `n`n, `n, All
-        Property := Trim(Property,"`n")
-        Loop, Parse, Property, `n
-        {
-            Entry6 := 0, Entry7 := 100
-            StringSplit, Entry, A_LoopField, `,, %A_Space%`t
-            
-            (new _Platform("PlatformRectangle" A_Index, Entry1,Entry2,Entry3,Entry4, Entry5, Entry6, Entry7, Entry8))
-        }
+            (new _Platform("PlatformRectangle" A_Index, Split(A_LoopField, ",", " `t`r`n")*))
     }
     If RegExMatch(LevelDefinition,"iS)Player\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
-    {
-        Entry5 := 0, Entry6 := 0
-        StringSplit, Entry, Property, `,, %A_Space%`t`r`n
-        
-        Level.Player := new _Player("PlayerRectangle",Entry1,Entry2,Entry3,Entry4,Entry5,Entry6)
-    }
+        Level.Player := new _Player("PlayerRectangle", Split(Property, ",", " `t`r`n")*)
     If RegExMatch(LevelDefinition,"iS)Goal\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
-    {
-        StringSplit, Entry, Property, `,, %A_Space%`t`r`n
-        Level.Goal := new _Area("GoalRectangle", Entry1, Entry2, Entry3, Entry4, "")
-        ; the goal is handled specially and not used for collisions, so omit from Level.Rectangles
-    }
+        Level.Goal := new _Area("GoalRectangle", Split(Property, ",", " `t`r`n")*)
     If RegExMatch(LevelDefinition,"iS)Enemies\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
     {
-        StringReplace, Property, Property, `r,, All
-        StringReplace, Property, Property, %A_Space%,, All
-        StringReplace, Property, Property, %A_Tab%,, All
-        While, InStr(Property,"`n`n")
-            StringReplace, Property, Property, `n`n, `n, All
-        Property := Trim(Property,"`n")
+        Property := RegExReplace(Property, "(\r?\n){2,}", "$1")
         Loop, Parse, Property, `n, `r `t
-        {
-            Entry5 := 0, Entry6 := 0
-            StringSplit, Entry, A_LoopField, `,, %A_Space%`t
-            
-            (new _Enemy("EnemyRectangle" A_Index,Entry1,Entry2,Entry3,Entry4,Entry5,Entry6))
-        }
+            (new _Enemy("EnemyRectangle" A_Index, Split(A_LoopField, ",", " `t`r`n")*))
     }
     
     Level.Width := 0
@@ -372,12 +332,12 @@ class _Rectangle
     }
     
     ; returns the amount of intersection or 0
-    IntersectsX( rect )
+    IntersectsX(rect)
     {
         return IntersectN(this.X, this.W, rect.X, rect.W)
     }
     
-    IntersectsY( rect )
+    IntersectsY(rect)
     {
         return IntersectN(this.Y, this.H, rect.Y, rect.H)
     }
@@ -385,7 +345,7 @@ class _Rectangle
 
 class _Area extends _Rectangle
 {
-    __new(id, X, Y, W, H, LogicCallout)
+    __new(id, X, Y, W, H, LogicCallout = "")
     {
         this.X := X
         this.Y := Y
@@ -408,7 +368,7 @@ class _Block extends _Rectangle
 
 class _Platform extends _Block
 {
-    __new(id, X, Y, W, H, RangeStart = 0,RangeLength = 0,Horizontal = 1,Speed = 0)
+    __new(id, X, Y, W, H, EndX = "", EndY = "", Speed = 0)
     {
         this.X := X
         this.Y := Y
@@ -417,31 +377,23 @@ class _Platform extends _Block
         this.independent := true
         this.Speed := { X: 0, Y: 0 }
         
-        this.Color := "Red"
-        
         this.id := id
         this.Indices := {}
         this.LevelAdd()
         
-        if RangeStart
+        if (EndX != "")
         {
             this.Color := "Lime"
-            If Horizontal
-            {
-                this.RangeX := RangeStart, this.RangeY := Y
-                this.RangeW := RangeLength, this.RangeH := 0
-                this.SpeedX := Speed, this.SpeedY := 0
-            }
-            Else
-            {
-                this.RangeX := X, this.RangeY := RangeStart, this.RangeW := 0, this.RangeH := RangeLength
-                this.SpeedX := 0, this.SpeedY := Speed
-            }
+            this.Logic := Func("Logic_MovingPlatform")
+            this.Start := { X: X, Y: Y }
+            this.End := { X: EndX, Y: EndY }
+            this.Cycle := Speed
         }
-    }
-    
-    Logic(Delta)
-    {
+        else
+        {
+            this.Color := "Red"
+            this.Logic := ""
+        }
     }
     
     LevelAdd()
@@ -454,30 +406,6 @@ class _Platform extends _Block
 
 class _Entity extends _Block
 {
-    __new(id,  X, Y, W, H, SpeedX, SpeedY)
-    {
-        this.X := X
-        this.Y := Y
-        this.W := W
-        this.H := H
-        this.mass := W * H ; * density
-        this.independent := false
-        
-        this.id := id
-        this.Indices := {}
-        this.LevelAdd()
-        
-        this.JumpSpeed := 300
-        
-        this.Seeking := false
-        
-        this.EnemyX := this.EnemyY := 0
-        this.Intersect := { X: 0, Y: 0 }
-        
-        this.NewSpeed := {}
-        this.Speed := { X: SpeedX, Y: SpeedY }
-    }
-    
     LevelAdd()
     {
         Level.Entities.Insert(this)
@@ -485,7 +413,7 @@ class _Entity extends _Block
         base.LevelAdd()
     }
     
-    Physics( delta )
+    Physics(delta)
     {
         this.NewSpeed.Y := this.Speed.Y
         this.NewSpeed.X := this.Speed.X
@@ -495,7 +423,7 @@ class _Entity extends _Block
         this.Intersect.X := 0
         this.Intersect.Y := 0
         
-        for i, rect in Level.Rectangles
+        for i, rect in Level.Blocks
         {
             if (this == rect)
                 continue
@@ -555,7 +483,7 @@ class _Entity extends _Block
             ; formula slightly modified from: http://en.wikipedia.org/wiki/Coefficient_of_restitution#Speeds_after_impact
     }
     
-    Friction( delta, rect, dir )
+    Friction(delta, rect, dir)
     {   ; not sure this is 100% right. 
         ; dir: direction of motion
         ; normal: direction normal to motion
@@ -573,7 +501,7 @@ class _Entity extends _Block
 
 class _Player extends _Entity
 {
-    __new(id, X, Y, W, H, SpeedX, SpeedY)
+    __new(id, X, Y, W, H, SpeedX = 0, SpeedY = 0)
     {
         this.X := X
         this.Y := Y
@@ -621,7 +549,7 @@ class _Player extends _Entity
         }
         this.WantJump := Jump
         
-        this.MoveX := Left ? -1 : Right ? 1 : 0
+        this.MoveX := Left > Right ? -1 : Right > Left ? 1 : 0
         
         this.H := Duck ? 30 : 40
         
@@ -639,7 +567,7 @@ class _Player extends _Entity
 
 class _Enemy extends _Entity
 {
-    __new(id,  X, Y, W, H, SpeedX, SpeedY)
+    __new(id,  X, Y, W, H, SpeedX = 0, SpeedY = 0)
     {
         this.X := X
         this.Y := Y
@@ -687,8 +615,26 @@ class _Enemy extends _Entity
     }
 }
 
+Logic_MovingPlatform(this, Delta)
+{
+    If (this.X > max(this.End.X, this.Start.X) || this.X < min(this.end.Y, this.Start.X))
+        this.Cycle *= -1
+    Else If (this.Y > max(this.End.Y, this.Start.Y) || this.Y < min(this.end.Y, this.Start.Y))
+        this.Cycle *= -1
+    this.X += Delta * (this.Start.X - this.End.X) / this.Cycle
+    this.Y += Delta * (this.Start.Y - this.End.Y) / this.Cycle
+}
 
-Sign( x )
+Split(text, char, ignore)
+{
+    StringSplit, Entry, text, %char%, %ignore%
+    ret := []
+    loop % Entry0
+        ret[A_Index] := Entry%A_Index%
+    return ret
+}
+
+Sign(x)
 {
     return x == 0 ? 0 : x < 0 ? -1 : 1
 }
@@ -705,7 +651,7 @@ IntersectN(a1, a2, b1, b2)
     return r >= 0 ? r * (a1 + a2/2 < b1 + b2/2 ? -1 : 1) : ""
 }
 
-min( x* )
+min(x*)
 {
     ; accepts either an array or args
     if (ObjMaxIndex(x) == 1 && IsObject(x[1]))
@@ -717,7 +663,7 @@ min( x* )
     return r
 }
 
-max( x* )
+max(x*)
 {
     ; accepts either an array or args
     if (ObjMaxIndex(x) == 1 && IsObject(x[1]))
@@ -729,7 +675,7 @@ max( x* )
     return r
 }
 
-mean( arr )
+mean(arr)
 {
     ret := 0
     loop % arr.MaxIndex()

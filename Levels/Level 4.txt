@@ -1,0 +1,9 @@
+Blocks:
+10, 500, 600, 30
+
+#moving blocks: x,y,w,h, endX, endY, 1/2 cycle length (seconds)
+10, 500, 100, 20, 450, 130, 4
+
+Player: 400, 473, 30, 40
+
+Goal: 500, 80, 50, 70
