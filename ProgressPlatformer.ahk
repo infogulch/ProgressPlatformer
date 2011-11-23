@@ -480,7 +480,7 @@ class _Entity extends _Block
         if (Sign(this.NewSpeed[dir]) == Sign(-int)) && Abs(this.NewSpeed[dir]) < 60
             this.NewSpeed[dir] := 0
         else if rect.independent
-            this.NewSpeed[dir] *= -Restitution
+            this.NewSpeed[dir] := (this.NewSpeed[dir] - rect.Speed[dir]) * -Restitution + rect.Speed[dir]
         else
             this.NewSpeed[dir] := (this.mass*this.NewSpeed[dir] + rect.mass*(rect.Speed[dir] + Restitution*(rect.Speed[dir] - this.NewSpeed[dir])))/(this.mass + rect.mass)
             ; formula slightly modified from: http://en.wikipedia.org/wiki/Coefficient_of_restitution#Speeds_after_impact
