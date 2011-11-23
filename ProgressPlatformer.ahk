@@ -7,7 +7,7 @@
     global Friction := .01
     global Restitution := 0.6
     
-    global Level, LevelIndex := 4
+    global Level, LevelIndex := 1
     global Left, Right, Jump, Duck, Health
     
     global GameGui
