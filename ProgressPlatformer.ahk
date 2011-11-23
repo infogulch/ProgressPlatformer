@@ -353,6 +353,7 @@ class _Area extends _Rectangle
         this.H := H
         this.Logic := LogicCallout
         this.id := id
+        this.Speed := { X: 0, Y: 0 }
     }
 }
 
@@ -368,7 +369,7 @@ class _Block extends _Rectangle
 
 class _Platform extends _Block
 {
-    __new(id, X, Y, W, H, EndX = "", EndY = "", Speed = 0)
+    __new(id, X, Y, W, H, EndX = "", EndY = "", CSpeed = 0)
     {
         this.X := X
         this.Y := Y
@@ -387,7 +388,9 @@ class _Platform extends _Block
             this.Logic := Func("Logic_MovingPlatform")
             this.Start := { X: X, Y: Y }
             this.End := { X: EndX, Y: EndY }
-            this.Cycle := Speed
+            this.Cycle := CSpeed
+            this.Speed.X := (X - EndX) / CSpeed
+            this.Speed.Y := (Y - EndY) / CSpeed
         }
         else
         {
@@ -487,9 +490,7 @@ class _Entity extends _Block
     {   ; not sure this is 100% right. 
         ; dir: direction of motion
         ; normal: direction normal to motion
-        ; normal := dir = "Y" ? "X" : "Y" 
-        ; this.NewSpeed[dir] -= min(this.Speed[dir], Friction * (this.NewSpeed[normal] - this.Speed[normal]) / delta * this.mass)
-        this.NewSpeed[dir] *= Friction ** delta
+        this.NewSpeed[dir] := (this.NewSpeed[dir] - rect.Speed[dir]) * Friction ** delta + rect.Speed[dir]
     }
     
     OutOfBounds()
@@ -617,10 +618,8 @@ class _Enemy extends _Entity
 
 Logic_MovingPlatform(this, Delta)
 {
-    If (this.X > max(this.End.X, this.Start.X) || this.X < min(this.end.Y, this.Start.X))
-        this.Cycle *= -1
-    Else If (this.Y > max(this.End.Y, this.Start.Y) || this.Y < min(this.end.Y, this.Start.Y))
-        this.Cycle *= -1
+    If (this.X > max(this.End.X, this.Start.X) || this.X < min(this.end.Y, this.Start.X)) || (this.Y > max(this.End.Y, this.Start.Y) || this.Y < min(this.end.Y, this.Start.Y))
+        this.Cycle *= -1, this.Speed.X *= -1, this.Speed.Y *= -1
     this.X += Delta * (this.Start.X - this.End.X) / this.Cycle
     this.Y += Delta * (this.Start.Y - this.End.Y) / this.Cycle
 }
