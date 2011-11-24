@@ -290,10 +290,18 @@ ParseLevel(LevelDefinition)
 
 class _Rectangle
 {
+    static LevelArray := "Rectangles"
+    
     LevelAdd()
     {
-        Level.Rectangles.Insert(this)
-        this.Indices.Rectangles := Level.Rectangles.MaxIndex()
+        this.Indices := {}
+        b := this
+        while IsObject(b := b.base)
+        {
+            name := b.LevelArray
+            Level[name].Insert(this)
+            this.Indices[name] := Level[name].MaxIndex()
+        }
     }
     
     LevelRemove()
@@ -345,6 +353,8 @@ class _Rectangle
 
 class _Area extends _Rectangle
 {
+    static LevelArray := "Areas"
+    
     __new(id, X, Y, W, H, LogicCallout = "")
     {
         this.X := X
@@ -359,16 +369,13 @@ class _Area extends _Rectangle
 
 class _Block extends _Rectangle
 {
-    LevelAdd()
-    {
-        Level.Blocks.Insert(this)
-        this.Indices.Blocks := Level.Blocks.MaxIndex()
-        base.LevelAdd()
-    }
+    static LevelArray := "Blocks"
 }
 
 class _Platform extends _Block
 {
+    static LevelArray := "Platforms"
+    
     __new(id, X, Y, W, H, EndX = "", EndY = "", CSpeed = 0)
     {
         this.X := X
@@ -379,7 +386,6 @@ class _Platform extends _Block
         this.Speed := { X: 0, Y: 0 }
         
         this.id := id
-        this.Indices := {}
         this.LevelAdd()
         
         if (EndX != "")
@@ -398,23 +404,11 @@ class _Platform extends _Block
             this.Logic := ""
         }
     }
-    
-    LevelAdd()
-    {
-        Level.Platforms.Insert(this)
-        this.Indices.Platforms := Level.Platforms.MaxIndex()
-        base.LevelAdd()
-    }
 }
 
 class _Entity extends _Block
 {
-    LevelAdd()
-    {
-        Level.Entities.Insert(this)
-        this.Indices.Entities := Level.Entities.MaxIndex()
-        base.LevelAdd()
-    }
+    static LevelArray := "Entities"
     
     Physics(delta)
     {
@@ -495,13 +489,15 @@ class _Entity extends _Block
     
     OutOfBounds()
     {
-        If (this.X < -this.Padding || this.X > (Level.Width + this.Padding) || this.Y > (Level.Height + this.Padding)) ;out of bounds
+        If (this.X < -this.Padding || this.X > (Level.Width + this.Padding) || this.Y > (Level.Height + this.Padding))
             Return, 1
     }
 }
 
 class _Player extends _Entity
 {
+    static LevelArray := "Players"
+    
     __new(id, X, Y, W, H, SpeedX = 0, SpeedY = 0)
     {
         this.X := X
@@ -514,7 +510,6 @@ class _Player extends _Entity
         this.padding := 100
         
         this.id := id
-        this.Indices := {}
         this.LevelAdd()
         
         this.JumpSpeed := 300
@@ -524,15 +519,8 @@ class _Player extends _Entity
         this.EnemyX := this.EnemyY := 0
         this.Intersect := { X: 0, Y: 0 }
         
-        this.NewSpeed := { X: SpeedX, Y: SpeedY }
+        this.NewSpeed := { }
         this.Speed := { X: SpeedX, Y: SpeedY }
-    }
-    
-    LevelAdd()
-    {
-        ; Level.Players.Insert(this)
-        ; this.Indices.Players := Level.Players.MaxIndex()
-        base.LevelAdd()
     }
     
     Logic(Delta)
@@ -568,6 +556,8 @@ class _Player extends _Entity
 
 class _Enemy extends _Entity
 {
+    static LevelArray := "Enemies"
+    
     __new(id,  X, Y, W, H, SpeedX = 0, SpeedY = 0)
     {
         this.X := X
@@ -579,7 +569,6 @@ class _Enemy extends _Entity
         this.independent := false
         
         this.id := id
-        this.Indices := {}
         this.LevelAdd()
         
         this.JumpSpeed := 270
@@ -592,15 +581,8 @@ class _Enemy extends _Entity
         
         this.Intersect := { X: 0, Y: 0 }
         
-        this.NewSpeed := {}
+        this.NewSpeed := { }
         this.Speed := { X: SpeedX, Y: SpeedY }
-    }
-    
-    LevelAdd()
-    {
-        Level.Enemies.Insert(this)
-        this.Indices.Enemies := Level.Enemies.MaxIndex()
-        base.LevelAdd()
     }
     
     Logic(Delta)
@@ -615,6 +597,7 @@ class _Enemy extends _Entity
         }
     }
 }
+
 
 Logic_MovingPlatform(this, Delta)
 {
