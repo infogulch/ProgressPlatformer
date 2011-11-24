@@ -124,7 +124,7 @@ PlaceRectangle(X, Y, W, H, id, Options = "")
     }
     Else
     {
-        GuiControl, %Options%, %id%
+        GuiControl, -Background %Options%, %id%
         GuiControlGet, hwnd, hwnd, %id%
         Control, ExStyle, -0x20000, , ahk_id%hwnd%
         GuiControl, Show, %id%
@@ -375,6 +375,8 @@ class _Platform extends _Block
     static LevelArray := "Platforms"
     
     independent := true
+    Color := "Red"
+    Logic := ""
     
     __new(id, X, Y, W, H, EndX = "", EndY = "", CSpeed = 0)
     {
@@ -393,14 +395,10 @@ class _Platform extends _Block
             this.Start := { X: X, Y: Y }
             this.End := { X: EndX, Y: EndY }
             this.Cycle := CSpeed
-            this.Speed.X := (X - EndX) / CSpeed
-            this.Speed.Y := (Y - EndY) / CSpeed
         }
-        else
-        {
-            this.Color := "Red"
-            this.Logic := ""
-        }
+        
+        if IsFunc(this.Logic)
+            this.Logic.(this, 0)
     }
 }
 
@@ -604,6 +602,9 @@ class _Enemy extends _Entity
 
 Logic_MovingPlatform(this, Delta)
 {
+    if !this.Speed.X && !this.Speed.Y
+        this.Speed.X := (this.X - this.End.X) / this.Cycle
+        this.Speed.Y := (this.Y - this.End.Y) / this.Cycle
     If (this.X > max(this.End.X, this.Start.X) || this.X < min(this.end.Y, this.Start.X) || this.Y > max(this.End.Y, this.Start.Y) || this.Y < min(this.end.Y, this.Start.Y))
     {
         this.Cycle *= -1, this.Speed.X *= -1, this.Speed.Y *= -1
