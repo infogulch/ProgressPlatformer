@@ -8,7 +8,7 @@
     global Restitution := 0.6
     
     global Level, LevelIndex := 1
-    global Left, Right, Jump, Duck, Health
+    global Left, Right, Jump, Duck
     
     global GameGui
     
@@ -50,7 +50,6 @@
 ExitApp
 
 #if WinActive("ahk_id" GameGui.hwnd)
-
 f::
     GuiControl, % "Show" (ShowFrameRate := !ShowFrameRate), FrameRate
     SetTimer, ShowFrameRate, % ShowFrameRate ? 200 : "Off"
@@ -227,12 +226,16 @@ Update()
 {
     global
     local Rectangle, Index
-    GuiControl,, PlayerRectangle, %Health%
     ;update everything
     For Index, Rectangle In Level.Rectangles
+    {
+        if Rectangle.HasKey("Health")
+            GuiControl,, % Rectangle.id, % Rectangle.Health
         GuiControl, Move, % Rectangle.id, % "x" . Rectangle.X . " y" . Rectangle.Y . " w" . Rectangle.W . " h" . Rectangle.H
+    }
     Return, 0
 }
+
 
 ParseLevel(LevelDefinition)
 {
@@ -257,8 +260,6 @@ ParseLevel(LevelDefinition)
     Level.Entities   := []
     Level.Enemies    := []
     
-    If RegExMatch(LevelDefinition,"iS)Player\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
-        Level.Player := new _Player("PlayerRectangle", Split(Property, ",", " `t`r`n")*)
     If RegExMatch(LevelDefinition,"iS)Goal\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
         Level.Goal := new _Area("GoalRectangle", Split(Property, ",", " `t`r`n")*)
     If RegExMatch(LevelDefinition,"iS)Enemies\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
@@ -267,6 +268,8 @@ ParseLevel(LevelDefinition)
         Loop, Parse, Property, `n, `r `t
             (new _Enemy("EnemyRectangle" A_Index, Split(A_LoopField, ",", " `t`r`n")*))
     }
+    If RegExMatch(LevelDefinition,"iS)Player\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
+        Level.Player := new _Player("PlayerRectangle", Split(Property, ",", " `t`r`n")*)
     If RegExMatch(LevelDefinition,"iS)\s*Blocks\s*:\s*\K(?:-?\d+\s*(?:,\s*-?\d+\s*){3,7})*",Property)
     {
         Property := RegExReplace(Property, "(\r?\n){2,}", "$1")
@@ -286,7 +289,6 @@ ParseLevel(LevelDefinition)
     Level.Width += 10
     Level.Height += 10
 }
-
 
 class _Rectangle
 {
@@ -425,6 +427,8 @@ class _Entity extends _Block
     MoveSpeed := 600
     MoveX := 0
     
+    Health := 0
+    
     Physics(delta)
     {
         this.NewSpeed.Y := this.Speed.Y
@@ -513,6 +517,8 @@ class _Player extends _Entity
 {
     static LevelArray := "Players"
     
+    Health := 100
+    
     __new(id, X, Y, W, H, SpeedX = 0, SpeedY = 0)
     {
         this.X := X
@@ -525,7 +531,7 @@ class _Player extends _Entity
         this.id := id
         this.LevelAdd()
         
-        this.JumpSpeed := 300
+        this.JumpSpeed := 320
         this.MoveSpeed := 800
         this.MoveX := 0
         
@@ -539,11 +545,11 @@ class _Player extends _Entity
     {
         If this.OutOfBounds()
             Return 1
-        If (Health <= 0) ;out of health
+        If (this.Health <= 0) ;out of health
             Return, 2
         If this.Inside(Level.Goal) ;reached goal
         {
-            Score := Round(Health)
+            Score := Round(this.Health)
             MsgBox, You win!`n`nYour score was %Score%.
             LevelIndex++ ;move to the next level
             Return, 3
@@ -556,11 +562,11 @@ class _Player extends _Entity
         
         ; health/enemy killing
         If (this.EnemyX || IsObject(this.EnemyY) && this.Y > this.EnemyY.Y)
-            Health -= 200 * Delta
+            this.Health -= 200 * Delta
         Else If IsObject(this.EnemyY)
         {
             this.EnemyY.LevelRemove()
-            Health += 50
+            this.Health += 50
         }
         Return, 0
     }
