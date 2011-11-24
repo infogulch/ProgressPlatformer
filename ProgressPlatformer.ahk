@@ -291,6 +291,10 @@ ParseLevel(LevelDefinition)
 class _Rectangle
 {
     static LevelArray := "Rectangles"
+    X := 0
+    Y := 0
+    W := 0
+    H := 0
     
     LevelAdd()
     {
@@ -370,11 +374,15 @@ class _Area extends _Rectangle
 class _Block extends _Rectangle
 {
     static LevelArray := "Blocks"
+    
+    Speed := { X: 0, Y: 0 }
 }
 
 class _Platform extends _Block
 {
     static LevelArray := "Platforms"
+    
+    independent := true
     
     __new(id, X, Y, W, H, EndX = "", EndY = "", CSpeed = 0)
     {
@@ -382,8 +390,6 @@ class _Platform extends _Block
         this.Y := Y
         this.W := W
         this.H := H
-        this.independent := true
-        this.Speed := { X: 0, Y: 0 }
         
         this.id := id
         this.LevelAdd()
@@ -409,6 +415,15 @@ class _Platform extends _Block
 class _Entity extends _Block
 {
     static LevelArray := "Entities"
+    
+    NewSpeed := {}
+    Intersect := { X: 0, Y: 0 }
+    independent := false
+    padding := 100
+    
+    JumpSpeed := 270
+    MoveSpeed := 600
+    MoveX := 0
     
     Physics(delta)
     {
@@ -506,8 +521,6 @@ class _Player extends _Entity
         this.H := H
         
         this.mass := W * H * 1.5
-        this.independent := false
-        this.padding := 100
         
         this.id := id
         this.LevelAdd()
@@ -516,11 +529,10 @@ class _Player extends _Entity
         this.MoveSpeed := 800
         this.MoveX := 0
         
-        this.EnemyX := this.EnemyY := 0
-        this.Intersect := { X: 0, Y: 0 }
+        this.EnemyX := 0, this.EnemyY := 0
         
-        this.NewSpeed := { }
-        this.Speed := { X: SpeedX, Y: SpeedY }
+        this.Speed.X := SpeedX
+        this.Speed.Y := SpeedY
     }
     
     Logic(Delta)
@@ -566,23 +578,15 @@ class _Enemy extends _Entity
         this.H := H
         
         this.mass := W * H ; * density
-        this.independent := false
         
         this.id := id
         this.LevelAdd()
         
-        this.JumpSpeed := 270
-        this.MoveSpeed := 600
-        this.MoveX := 0
         this.SeekDistance := 120
-        this.padding := 300
-        
         this.Seeking := false
         
-        this.Intersect := { X: 0, Y: 0 }
-        
-        this.NewSpeed := { }
-        this.Speed := { X: SpeedX, Y: SpeedY }
+        this.Speed.X := SpeedX
+        this.Speed.Y := SpeedY
     }
     
     Logic(Delta)
