@@ -95,20 +95,15 @@ Initialize()
     
     PreventRedraw(GameGui.hwnd)
     
-    Gui, +LastFound
-    hWindow := WinExist()
-    PreventRedraw(hWindow)
-    
     ;create everything
     For Index, Rectangle In Level.Rectangles
         PlaceRectangle(Rectangle.X, Rectangle.Y, Rectangle.W, Rectangle.H, Rectangle.id, Rectangle.options (Rectangle.Color ? " +Background" Rectangle.Color : ""))
     
-    AllowRedraw(hWindow)
-    WinSet, Redraw
+    AllowRedraw(GameGui.hwnd)
+    WinSet, Redraw, , % "ahk_id" GameGui.hwnd
     
     Gui, Show, % "W" Level.Width " H" Level.Height, ProgressPlatformer
     
-    WinGetPos,,, Width, Height, % "ahk_id" GameGui.hwnd
     GameGui.Width := Width
     GameGui.Height := Height
 }
