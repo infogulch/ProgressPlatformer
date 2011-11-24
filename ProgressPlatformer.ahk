@@ -80,15 +80,13 @@ ExitApp
 
 Initialize()
 {
-    Health := 100
-
     LevelFile := A_ScriptDir . "\Levels\Level " . LevelIndex . ".txt"
     If !FileExist(LevelFile)
         Return, 1
     FileRead, LevelDefinition, %LevelFile%
     If ErrorLevel
         Return, 1
-
+    
     ;hide all rectangles
     For Index, Rectangle In Level.Rectangles
         GuiControl, Hide, % Rectangle.id
@@ -101,19 +99,9 @@ Initialize()
     hWindow := WinExist()
     PreventRedraw(hWindow)
     
-    ;create platforms
-    For Index, Rectangle In Level.Platforms
-        PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"PlatformRectangle",Index,"+Background" Rectangle.Color)
-    
-    ;create player
-    PlaceRectangle(Level.Player.X,Level.Player.Y,Level.Player.W,Level.Player.H,"PlayerRectangle","","-Smooth Vertical")
-    
-    ;create goal
-    PlaceRectangle(Level.Goal.X,Level.Goal.Y,Level.Goal.W,Level.Goal.H,"GoalRectangle","","+BackgroundWhite")
-    
-    ;create enemies
-    For Index, Rectangle In Level.Enemies
-        PlaceRectangle(Rectangle.X,Rectangle.Y,Rectangle.W,Rectangle.H,"EnemyRectangle",Index,"+BackgroundBlue")
+    ;create everything
+    For Index, Rectangle In Level.Rectangles
+        PlaceRectangle(Rectangle.X, Rectangle.Y, Rectangle.W, Rectangle.H, Rectangle.id, Rectangle.options (Rectangle.Color ? " +Background" Rectangle.Color : ""))
     
     AllowRedraw(hWindow)
     WinSet, Redraw
@@ -125,26 +113,27 @@ Initialize()
     GameGui.Height := Height
 }
 
-PlaceRectangle(X,Y,W,H,Name,Index = "",Options = "")
+PlaceRectangle(X, Y, W, H, id, Options = "")
 {
     global
     static NameCount := Object()
-    local hWnd
-    If !NameCount.HasKey(Name)
-        NameCount[Name] := 0
-    If ((Index = "" && NameCount[Name] = 0) || NameCount[Name] < Index) ;control does not yet exist
+    local hWnd, _, _Name, _Index
+    RegExMatch(id, "i)^(?<Name>[a-z]+)(?<Index>\d+)?$", _)
+    If !NameCount.Haskey(_Name)
+        NameCount[_Name] := 0
+    If ((_Index = "" && NameCount[_Name] = 0) || NameCount[_Name] < _Index) ;control does not yet exist
     {
-        NameCount[Name]++
-        Gui, Add, Progress, x%X% y%Y% w%W% h%H% v%Name%%Index% %Options% hwndhwnd, 0
+        NameCount[_Name]++
+        Gui, Add, Progress, x%X% y%Y% w%W% h%H% v%id% %Options% hwndhwnd, 0
         Control, ExStyle, -0x20000, , ahk_id%hwnd% ;remove WS_EX_STATICEDGE extended style
     }
     Else
     {
-        GuiControl, %Options%, %Name%%Index%
-        GuiControlGet, hwnd, hwnd, %Name%%Index%
+        GuiControl, %Options%, %id%
+        GuiControlGet, hwnd, hwnd, %id%
         Control, ExStyle, -0x20000, , ahk_id%hwnd%
-        GuiControl, Show, %Name%%Index%
-        GuiControl, Move, %Name%%Index%, x%X% y%Y% w%W% h%H%
+        GuiControl, Show, %id%
+        GuiControl, Move, %id%, x%X% y%Y% w%W% h%H%
     }
 }
 
@@ -193,7 +182,7 @@ Input()
 
 Physics(Delta)
 {
-    ; O(2N + N*(N + K)) N: entities, K: blocks
+    ; O(2E + EB) E: entities, B: blocks
     local entity
     
     ; apply changes in speeds from last frame to position
@@ -293,10 +282,12 @@ ParseLevel(LevelDefinition)
 class _Rectangle
 {
     static LevelArray := "Rectangles"
+    
     X := 0
     Y := 0
     W := 0
     H := 0
+    Options := ""
     
     LevelAdd()
     {
@@ -361,6 +352,8 @@ class _Area extends _Rectangle
 {
     static LevelArray := "Areas"
     
+    Color := "White"
+    
     __new(id, X, Y, W, H, LogicCallout = "")
     {
         this.X := X
@@ -370,6 +363,8 @@ class _Area extends _Rectangle
         this.Logic := LogicCallout
         this.id := id
         this.Speed := { X: 0, Y: 0 }
+        
+        this.LevelAdd()
     }
 }
 
@@ -518,6 +513,7 @@ class _Player extends _Entity
     static LevelArray := "Players"
     
     Health := 100
+    Options := "-Smooth Vertical"
     
     __new(id, X, Y, W, H, SpeedX = 0, SpeedY = 0)
     {
@@ -575,6 +571,8 @@ class _Player extends _Entity
 class _Enemy extends _Entity
 {
     static LevelArray := "Enemies"
+    
+    Color := "Blue"
     
     __new(id,  X, Y, W, H, SpeedX = 0, SpeedY = 0)
     {
