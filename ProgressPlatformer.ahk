@@ -174,10 +174,10 @@ Step(Delta)
         Delta *= 0.3
     If Input()
         Return, 1
-    If Physics(Delta)
-        Return, 2
     If Logic(Delta)
         Return, 3
+    If Physics(Delta)
+        Return, 2
     If Update()
         Return, 4
     Return, 0
@@ -257,12 +257,6 @@ ParseLevel(LevelDefinition)
     Level.Entities   := []
     Level.Enemies    := []
     
-    If RegExMatch(LevelDefinition,"iS)\s*Blocks\s*:\s*\K(?:-?\d+\s*(?:,\s*-?\d+\s*){3,7})*",Property)
-    {
-        Property := RegExReplace(Property, "(\r?\n){2,}", "$1")
-        Loop, Parse, Property, `n
-            (new _Platform("PlatformRectangle" A_Index, Split(A_LoopField, ",", " `t`r`n")*))
-    }
     If RegExMatch(LevelDefinition,"iS)Player\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
         Level.Player := new _Player("PlayerRectangle", Split(Property, ",", " `t`r`n")*)
     If RegExMatch(LevelDefinition,"iS)Goal\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
@@ -272,6 +266,12 @@ ParseLevel(LevelDefinition)
         Property := RegExReplace(Property, "(\r?\n){2,}", "$1")
         Loop, Parse, Property, `n, `r `t
             (new _Enemy("EnemyRectangle" A_Index, Split(A_LoopField, ",", " `t`r`n")*))
+    }
+    If RegExMatch(LevelDefinition,"iS)\s*Blocks\s*:\s*\K(?:-?\d+\s*(?:,\s*-?\d+\s*){3,7})*",Property)
+    {
+        Property := RegExReplace(Property, "(\r?\n){2,}", "$1")
+        Loop, Parse, Property, `n
+            (new _Platform("PlatformRectangle" A_Index, Split(A_LoopField, ",", " `t`r`n")*))
     }
     
     Level.Width := 0
