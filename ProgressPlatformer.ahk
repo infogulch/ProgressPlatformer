@@ -391,14 +391,18 @@ class _Platform extends _Block
         if (EndX != "")
         {
             this.Color := "Lime"
-            this.Logic := Func("Logic_MovingPlatform")
+            this.Logic := "Logic_MovingPlatform"
             this.Start := { X: X, Y: Y }
             this.End := { X: EndX, Y: EndY }
             this.Cycle := CSpeed
         }
         
         if IsFunc(this.Logic)
+        {
+            if !IsObject(this.Logic)
+                this.Logic := Func(this.Logic)
             this.Logic.(this, 0)
+        }
     }
 }
 
