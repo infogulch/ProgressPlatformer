@@ -1,4 +1,4 @@
-Blocks:
+Platforms:
 10, 500, 600, 30
 
 #moving blocks: x,y,w,h, endX, endY, 1/2 cycle length (seconds)
