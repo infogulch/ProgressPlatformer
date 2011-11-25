@@ -21,7 +21,14 @@
     SetWinDelay, -1
     
     GoSub MakeGuis
-    
+    GoSub ChooseLevel
+return
+
+LevelChosen:
+    Gui, LevelPicker:Submit
+    LevelIndex := LV_GetNext()
+    Gui, GameWindow:Default
+Start:
     DeltaList := []
     TargetFrameDelay := 1000 / TargetFrameRate
     TickFrequency := 0, DllCall("QueryPerformanceFrequency","Int64*",TickFrequency) ;obtain ticks per second
@@ -46,8 +53,8 @@
                 Break
         }
     }
-    MsgBox, Game complete!
-ExitApp
+    GoSub ChooseLevel
+return
 
 #if WinActive("ahk_id" GameGui.hwnd)
 f::
@@ -61,21 +68,40 @@ return
 
 MakeGuis:
     ;create game window
+    Gui, GameWindow:Default
     Gui, Color, Black
     Gui, Font, s14 Cwhite
     Gui, Add, Text, vFrameRate x0 y0 hidden backgroundtrans, 000
     Gui, Font, s10
     Gui, +OwnDialogs +LastFound
-
+    
     GameGUI := {}
     GameGUI.hwnd := WinExist()
+    
+    Gui, LevelPicker:Add, ListView, -Multi vLevelList r7 gLevelChosen w150, Level|HighScore
+    Gui, LevelPicker:Add, Button, gLevelChosen, Start
 Return
+
+GameWindowGuiEscape:
+GameWindowGuiClose:
+ChooseLevel:
+    Gui, GameWindow:Hide
+    Gui, LevelPicker:Default
+    
+    LV_Delete()
+    loop %A_ScriptDir%\Levels\Level *.txt
+        LV_Add("", SubStr(A_LoopFileName, 7, -StrLen(A_LoopFileExt)-1), 0)
+    LV_ModifyCol("AutoHdr")
+    
+    Gui, Show, , Choose Level
+    Gui, GameWindow:Default
+return
 
 QuitGame:
     if DEBUG
         FileAppend, %LOG%, log.txt
-GuiEscape:
-GuiClose:
+LevelPickerGuiEscape:
+LevelPickerGuiClose:
 ExitApp
 
 PlaceRectangle(X, Y, W, H, id, Options = "")
