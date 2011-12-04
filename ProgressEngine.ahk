@@ -4,8 +4,6 @@
     TargetFrameRate := 50
     
     global Gravity := 981
-    global Friction := .01
-    global Restitution := 0.6
     
     global Level, LevelIndex := 1
     global Left, Right, Jump, Duck
@@ -265,6 +263,9 @@ class _Block extends _Rectangle
 {
     static PluralName := "Blocks"
     
+    static Friction := .005
+    static Restitution := 0.6
+    
     Speed := { X: 0, Y: 0 }
 }
 
@@ -343,7 +344,7 @@ class _Entity extends _Block
             {   ; collision along horizontal
                 this.Y += Y ;move out of intersection
                 this.Intersect.Y := Y
-                this.Friction(Delta, rect, "X")
+                this.Slide(Delta, rect, "X")
                 
                 if (this.Y > rect.Y && this.WantJump && rect.independent) ; ceiling stick, no net effect if it's a movable rect
                     this.NewSpeed.Y -= Gravity * Delta
@@ -360,7 +361,7 @@ class _Entity extends _Block
             {   ; collision along vertical
                 this.X += X
                 this.Intersect.X := X
-                this.Friction(Delta, rect, "Y")
+                this.Slide(Delta, rect, "Y")
                 this.Impact(Delta, rect, "X", X)
                 
                 if (Sign(X) == -this.MoveX && this.MoveX) ; wall climb
@@ -382,17 +383,17 @@ class _Entity extends _Block
         if (Sign(this.NewSpeed[dir]) == Sign(-int)) && Abs(this.NewSpeed[dir]) < 50
             this.NewSpeed[dir] := 0
         else if rect.independent
-            this.NewSpeed[dir] := (this.NewSpeed[dir] - rect.Speed[dir]) * -Restitution + rect.Speed[dir]
+            this.NewSpeed[dir] := (this.NewSpeed[dir] - rect.Speed[dir]) * -rect.Restitution + rect.Speed[dir]
         else
-            this.NewSpeed[dir] := (this.mass*this.NewSpeed[dir] + rect.mass*(rect.Speed[dir] + Restitution*(rect.Speed[dir] - this.NewSpeed[dir])))/(this.mass + rect.mass)
+            this.NewSpeed[dir] := (this.mass*this.NewSpeed[dir] + rect.mass*(rect.Speed[dir] + rect.Restitution*(rect.Speed[dir] - this.NewSpeed[dir])))/(this.mass + rect.mass)
             ; formula slightly modified from: http://en.wikipedia.org/wiki/Coefficient_of_restitution#Speeds_after_impact
     }
     
-    Friction(delta, rect, dir)
+    Slide(delta, rect, dir)
     {   ; not sure this is 100% right. 
         ; dir: direction of motion
         ; normal: direction normal to motion
-        this.NewSpeed[dir] := (this.NewSpeed[dir] - rect.Speed[dir]) * Friction ** delta + rect.Speed[dir]
+        this.NewSpeed[dir] := (this.NewSpeed[dir] - rect.Speed[dir]) * (this.Friction + rect.Friction) ** delta + rect.Speed[dir]
     }
     
     OutOfBounds()
