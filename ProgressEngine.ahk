@@ -144,19 +144,21 @@ ParseLevel(LevelDefinition)
     
     If RegExMatch(LevelDefinition,"iS)Goal\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3})*",Property)
         Level.Goal := new _Area("GoalRectangle", Split(Property, ",", " `t`r`n")*)
+        , RecurseBaseInsert(Level, Level.Goal)
     If RegExMatch(LevelDefinition,"iS)Enemies\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
     {
         Property := RegExReplace(Property, "(\r?\n){2,}", "$1")
         Loop, Parse, Property, `n, `r `t
-            (new _Enemy("EnemyRectangle" A_Index, Split(A_LoopField, ",", " `t`r`n")*))
+            RecurseBaseInsert(Level, new _Enemy("EnemyRectangle" A_Index, Split(A_LoopField, ",", " `t`r`n")*))
     }
     If RegExMatch(LevelDefinition,"iS)Player\s*:\s*\K(?:\d+\s*(?:,\s*\d+\s*){3,5})*",Property)
         Level.Player := new _Player("PlayerRectangle", Split(Property, ",", " `t`r`n")*)
+        , RecurseBaseInsert(Level, Level.Player)
     If RegExMatch(LevelDefinition,"iS)\s*Platforms\s*:\s*\K(?:-?\d+\s*(?:,\s*-?\d+\s*){3,7})*",Property)
     {
         Property := RegExReplace(Property, "(\r?\n){2,}", "$1")
         Loop, Parse, Property, `n
-            (new _Platform("PlatformRectangle" A_Index, Split(A_LoopField, ",", " `t`r`n")*))
+            RecurseBaseInsert(Level, new _Platform("PlatformRectangle" A_Index, Split(A_LoopField, ",", " `t`r`n")*))
     }
     
     Level.Width := 0
@@ -172,27 +174,27 @@ ParseLevel(LevelDefinition)
     Level.Height += 10
 }
 
+RecurseBaseInsert(obj, this)
+{
+    this.Indices := {}
+    b := this
+    while IsObject(b := b.base)
+    {
+        name := b.PluralName
+        obj[name].Insert(this)
+        this.Indices[name] := obj[name].MaxIndex()
+    }
+}
+
 class _Rectangle
 {
-    static LevelArray := "Rectangles"
+    static PluralName := "Rectangles"
     
     X := 0
     Y := 0
     W := 0
     H := 0
     Options := ""
-    
-    LevelAdd()
-    {
-        this.Indices := {}
-        b := this
-        while IsObject(b := b.base)
-        {
-            name := b.LevelArray
-            Level[name].Insert(this)
-            this.Indices[name] := Level[name].MaxIndex()
-        }
-    }
     
     LevelRemove()
     {
@@ -243,7 +245,7 @@ class _Rectangle
 
 class _Area extends _Rectangle
 {
-    static LevelArray := "Areas"
+    static PluralName := "Areas"
     
     Color := "White"
     
@@ -256,21 +258,19 @@ class _Area extends _Rectangle
         this.Logic := LogicCallout
         this.id := id
         this.Speed := { X: 0, Y: 0 }
-        
-        this.LevelAdd()
     }
 }
 
 class _Block extends _Rectangle
 {
-    static LevelArray := "Blocks"
+    static PluralName := "Blocks"
     
     Speed := { X: 0, Y: 0 }
 }
 
 class _Platform extends _Block
 {
-    static LevelArray := "Platforms"
+    static PluralName := "Platforms"
     
     independent := true
     Color := "Red"
@@ -284,7 +284,6 @@ class _Platform extends _Block
         this.H := H
         
         this.id := id
-        this.LevelAdd()
         
         if (EndX != "")
         {
@@ -306,7 +305,7 @@ class _Platform extends _Block
 
 class _Entity extends _Block
 {
-    static LevelArray := "Entities"
+    static PluralName := "Entities"
     
     NewSpeed := {}
     Intersect := { X: 0, Y: 0 }
@@ -405,7 +404,7 @@ class _Entity extends _Block
 
 class _Player extends _Entity
 {
-    static LevelArray := "Players"
+    static PluralName := "Players"
     
     Health := 100
     Options := "-Smooth Vertical"
@@ -420,7 +419,6 @@ class _Player extends _Entity
         this.mass := W * H * 1.5
         
         this.id := id
-        this.LevelAdd()
         
         this.JumpSpeed := 320
         this.MoveSpeed := 800
@@ -465,7 +463,7 @@ class _Player extends _Entity
 
 class _Enemy extends _Entity
 {
-    static LevelArray := "Enemies"
+    static PluralName := "Enemies"
     
     Color := "Blue"
     
@@ -479,7 +477,6 @@ class _Enemy extends _Entity
         this.mass := W * H ; * density
         
         this.id := id
-        this.LevelAdd()
         
         this.SeekDistance := 120
         this.Seeking := false
